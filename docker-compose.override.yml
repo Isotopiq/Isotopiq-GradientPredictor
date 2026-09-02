@@ -4,24 +4,24 @@ services:
   backend:
     build:
       context: ./backend
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 18700 --reload
     volumes:
       - ./backend:/app
       - models_data:/app/models
     ports:
-      - "8000:8000"
+      - "18700:18700"
 
   frontend:
     build:
       context: ./frontend
-    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 18717"
     volumes:
       - ./frontend:/app
       - /app/node_modules
     ports:
-      - "5173:5173"
+      - "18717:18717"
     environment:
-      - VITE_API_BASE_URL=http://localhost:8000/api/v1
+      - VITE_API_BASE_URL=http://localhost:18700/api/v1
 
 volumes:
   models_data:

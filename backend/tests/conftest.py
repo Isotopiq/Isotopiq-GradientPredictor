@@ -23,7 +23,7 @@ os.environ.setdefault(
     "sqlite+aiosqlite:///:memory:",
 )
 os.environ.setdefault("JWT_SECRET", "test-secret-not-for-production")
-os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173")
+os.environ.setdefault("CORS_ORIGINS", "http://localhost:18717")
 os.environ.setdefault("MODEL_STORAGE_PATH", "./test_models")
 
 

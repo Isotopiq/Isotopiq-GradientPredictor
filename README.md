@@ -14,7 +14,7 @@ Inspired by Chromsword Method Development Suite.
 ```bash
 cp .env.example .env
 docker compose up --build
-# App: http://localhost  |  API: http://localhost/api/health
+# App: http://localhost:18780  |  API: http://localhost:18780/api/health
 ```
 
 Tear down:
@@ -26,8 +26,17 @@ docker compose down -v
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.override.yml up --build
-# Backend: http://localhost:8000  |  Frontend: http://localhost:5173
+# Backend: http://localhost:18700  |  Frontend: http://localhost:18717
 ```
+
+### Port assignments (chosen to avoid conflicts with common services)
+
+| Service        | Port  | Notes                          |
+|----------------|-------|--------------------------------|
+| Frontend (nginx) | 18780 | Production SPA + API proxy     |
+| Frontend (Vite)  | 18717 | Dev hot-reload                 |
+| Backend (FastAPI)| 18700 | REST API                       |
+| PostgreSQL       | 18732 | Only if explicitly exposed     |
 
 ## Testing (Docker, run-to-completion — no lingering containers)
 
@@ -50,13 +59,13 @@ docker compose -f docker-compose.test.yml down -v
 ## Architecture
 
 ```
-browser ──▶ nginx (frontend SPA) ──▶ /api/* ──▶ FastAPI backend
-                                              │
-                                              ├── PostgreSQL (compounds, methods, runs, models)
-                                              ├── RDKit (descriptors, pKa, logP)
-                                              ├── Rules engine (column / pH / additive / gradient)
-                                              ├── LSS gradient simulator
-                                              └── ML registry (per-column XGBoost/LightGBM/ensemble)
+browser ──▶ nginx :18780 (frontend SPA) ──▶ /api/* ──▶ FastAPI :18700 (backend)
+                                                              │
+                                                              ├── PostgreSQL :5432 (internal only)
+                                                              ├── RDKit (descriptors, pKa, logP)
+                                                              ├── Rules engine (column / pH / additive / gradient)
+                                                              ├── LSS gradient simulator
+                                                              └── ML registry (per-column XGBoost/LightGBM/ensemble)
 ```
 
 See `AGENTS.md` for build/test commands and conventions.

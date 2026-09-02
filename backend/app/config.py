@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_ttl_minutes: int = 30
     refresh_token_ttl_days: int = 7
-    cors_origins: str = "http://localhost:5173,http://localhost"
+    cors_origins: str = "http://localhost:18780,http://localhost:18717"
     model_storage_path: str = "./models"
     pubchem_base_url: str = "https://pubchem.ncbi.nlm.nih.gov/rest/pug"
 

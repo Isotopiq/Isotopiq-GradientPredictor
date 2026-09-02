@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 os.environ.setdefault("JWT_SECRET", "test-secret-not-for-production")
-os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173")
+os.environ.setdefault("CORS_ORIGINS", "http://localhost:18717")
 os.environ.setdefault("MODEL_STORAGE_PATH", "./test_models")
 
 from app.models import Base  # noqa: E402

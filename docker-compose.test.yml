@@ -19,13 +19,13 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://test:test@db:5432/test
       JWT_SECRET: test-secret
-      CORS_ORIGINS: http://localhost:5173
+      CORS_ORIGINS: http://localhost:18717
       MODEL_STORAGE_PATH: /app/test_models
     depends_on:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:18700/api/v1/health')"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -40,4 +40,4 @@ services:
       backend:
         condition: service_healthy
     environment:
-      - BASE_URL=http://backend:8000
+      - BASE_URL=http://backend:18700
