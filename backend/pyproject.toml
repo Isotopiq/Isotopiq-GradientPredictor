@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lcms-backend"
+version = "0.1.0"
+description = "LC-MS Method Prediction Suite backend"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "sqlalchemy[asyncio]>=2.0.25",
+    "asyncpg>=0.29",
+    "alembic>=1.13",
+    "pydantic>=2.6",
+    "pydantic[email]>=2.6",
+    "pydantic-settings>=2.1",
+    "email-validator>=2.0",
+    "rdkit>=2024.3.1",
+    "python-jose[cryptography]>=3.3",
+    "bcrypt>=4.1",
+    "httpx>=0.27",
+    "python-multipart>=0.0.9",
+    "openpyxl>=3.1",
+    "reportlab>=4.0",
+    "matplotlib>=3.8",
+    "xgboost>=2.0",
+    "lightgbm>=4.3",
+    "scikit-learn>=1.4",
+    "joblib>=1.3",
+    "numpy>=1.26",
+    "pandas>=2.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "aiosqlite>=0.20",
+    "respx>=0.20",
+    "ruff>=0.3",
+    "mypy>=1.8",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-ra -q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+ignore_missing_imports = true
+plugins = ["pydantic.mypy"]

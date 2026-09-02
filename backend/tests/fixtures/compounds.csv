@@ -1,0 +1,16 @@
+name,smiles,column_type,ph,percent_b_start,percent_b_end,gradient_time_min,flow_ml_min,observed_rt_s,literature_ref
+caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C,C18,2.7,5,40,15,0.4,180,Snyder1981
+paracetamol,CC(=O)NC1=CC=C(O)C=C1,C18,2.7,5,40,15,0.4,210,Snyder1981
+ibuprofen,CC(C)CC1=CC=C(C=C1)C(C)C(=O)O,C18,2.7,5,95,20,0.4,720,Snyder1981
+atenolol,CC(C)OCCOC1=CC=C(C=C1)OCC(N)C,C18,2.7,5,40,15,0.4,240,Snyder1981
+aspirin,CC(=O)OC1=CC=CC=C1C(=O)O,C18,2.7,5,40,15,0.4,195,Snyder1981
+caffeine_alt,CN1C=NC2=C1C(=O)N(C(=O)N2C)C,phenyl,3.0,5,60,20,0.4,220,Snyder1981
+benzene,c1ccccc1,C18,2.7,5,95,20,0.4,610,Snyder1981
+phenol,c1ccccc1O,C18,2.7,5,60,20,0.4,420,Snyder1981
+aniline,c1ccccc1N,C18,2.7,5,60,20,0.4,380,Snyder1981
+nicotine,CN1CCCC1c1ccc(cn1)C,phenyl,7.0,5,60,20,0.4,410,Snyder1981
+metformin,CN(C)C(=N)N=C(N)N,C18,3.0,2,40,15,0.4,150,Snyder1981
+warfarin,CC(=O)CC(C1=CC=CC=C1)C2=CC=CC=C2O,C18,2.7,5,95,25,0.4,980,Snyder1981
+theophylline,CN1C=NC2=C1C(=O)NC(=O)N2,C18,2.7,5,40,15,0.4,200,Snyder1981
+sulfamethoxazole,CC1=CC(=NO1)NS(=O)(=O)C2=CC=C(C=C2)N,C18,3.0,5,60,20,0.4,560,Snyder1981
+trimethoprim,COc1cc(Cc2ccc(NC(=O)C3CC3)cc2)cc(OC)c1OC,C18,3.0,5,60,20,0.4,520,Snyder1981
