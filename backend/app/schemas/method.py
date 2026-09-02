@@ -42,6 +42,8 @@ class MethodOut(ORMModel):
     flow_rate_ml_min: float | None = None
     temperature_c: float | None = None
     method_signature: str | None = None
+    is_shared: bool = False
+    share_token: str | None = None
 
 
 class MethodSuggestionRequest(BaseModel):

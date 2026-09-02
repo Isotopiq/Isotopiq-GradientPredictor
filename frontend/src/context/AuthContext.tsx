@@ -5,9 +5,10 @@ import { authApi } from '@/api/auth';
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   register: (email: string, password: string, fullName?: string) => Promise<void>;
   logout: () => void;
+  setUser: (user: User | null) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -16,10 +17,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, rememberMe?: boolean) => {
     setLoading(true);
     try {
-      const tokens = await authApi.login(email, password);
+      const tokens = await authApi.login(email, password, rememberMe);
       localStorage.setItem('access_token', tokens.access_token);
       localStorage.setItem('refresh_token', tokens.refresh_token);
       setUser(tokens.user);
@@ -58,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, setUser }}>
       {children}
     </AuthContext.Provider>
   );

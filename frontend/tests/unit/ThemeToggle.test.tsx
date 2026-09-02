@@ -10,7 +10,7 @@ describe('ThemeToggle', () => {
         <ThemeToggle />
       </ThemeProvider>,
     );
-    const button = screen.getByRole('button', { name: 'Toggle theme' });
+    const button = screen.getByRole('button', { name: /Theme:/i });
     expect(button).toBeInTheDocument();
   });
 });

@@ -1,29 +1,24 @@
 import { DataUpload } from '@/components/DataUpload';
-import { ModelsPage } from '@/pages/ModelsPage';
-import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 export function DataUploadPage() {
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [searchParams] = useSearchParams();
+  const preselectedColumn = searchParams.get('column');
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border">
-        <div className="mx-auto max-w-7xl px-4 py-3">
-          <h1 className="text-lg font-bold">Data & Models</h1>
-        </div>
-      </header>
-      <main className="mx-auto max-w-7xl px-4 py-6">
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <div className="lg:col-span-1">
-            <DataUpload onTrained={() => setRefreshKey((k) => k + 1)} />
-          </div>
-          <div className="lg:col-span-2">
-            <div key={refreshKey}>
-              <ModelsPage />
-            </div>
-          </div>
-        </div>
-      </main>
+    <div className="mx-auto max-w-4xl p-6">
+      <div className="mb-6">
+        <h1 className="text-xl font-bold">Data Upload & Model Training</h1>
+        <p className="text-sm text-muted-foreground">
+          Upload experimental run data as CSV to train retention prediction models.
+          {preselectedColumn && (
+            <span className="mt-1 block text-warning">
+              Recommended: retrain {preselectedColumn} model with new data
+            </span>
+          )}
+        </p>
+      </div>
+      <DataUpload onTrained={() => {}} defaultColumn={preselectedColumn || undefined} />
     </div>
   );
 }

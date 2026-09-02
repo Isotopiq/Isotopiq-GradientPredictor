@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Database,
   FlaskConical,
@@ -23,7 +23,18 @@ import {
   Pie,
   Cell,
 } from 'recharts';
-import { apiClient } from '@/api/client';
+import { mlApi } from '@/api/ml';
+import { CalibrationPlot } from '@/components/CalibrationPlot';
+import { Skeleton } from '@/components/Skeleton';
+import { EmptyState } from '@/components/EmptyState';
+
+const PIE_COLORS = [
+  'hsl(var(--chart-1))',
+  'hsl(var(--chart-2))',
+  'hsl(var(--chart-3))',
+  'hsl(var(--chart-4))',
+  'hsl(var(--chart-5))',
+];
 
 interface ModelStats {
   totals: {
@@ -55,45 +66,41 @@ interface ModelStats {
   }>;
 }
 
-const PIE_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
-
 export function DashboardPage() {
-  const [stats, setStats] = useState<ModelStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: stats, isLoading } = useQuery<ModelStats>({
+    queryKey: ['ml-stats'],
+    queryFn: async () => {
+      const { data } = await mlApi.stats();
+      return data as ModelStats;
+    },
+  });
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const { data } = await apiClient.get<ModelStats>('/ml/stats');
-        setStats(data);
-      } catch {
-        // ignore
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, []);
+  const { data: calibration } = useQuery({
+    queryKey: ['calibration'],
+    queryFn: () => mlApi.calibration(),
+  });
 
-  if (loading) {
+  if (isLoading) {
     return (
-      <main className="mx-auto max-w-7xl px-4 py-6">
+      <div className="mx-auto max-w-7xl p-6">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
           {[...Array(5)].map((_, i) => (
-            <div key={i} className="card h-28 animate-pulse" />
+            <Skeleton key={i} className="h-28" />
           ))}
         </div>
-      </main>
+      </div>
     );
   }
 
   if (!stats) {
     return (
-      <main className="mx-auto max-w-7xl px-4 py-6">
-        <div className="card text-center text-sm text-muted-foreground">
-          Unable to load statistics. Make sure the backend is running.
-        </div>
-      </main>
+      <div className="mx-auto max-w-7xl p-6">
+        <EmptyState
+          icon={<BarChart3 size={24} />}
+          title="Unable to load statistics"
+          description="Make sure the backend is running and you're logged in."
+        />
+      </div>
     );
   }
 
@@ -108,56 +115,34 @@ export function DashboardPage() {
   const confidencePct = Math.round(stats.avg_confidence * 100);
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-6">
-      <h1 className="mb-4 text-xl font-bold">Dashboard</h1>
+    <div className="mx-auto max-w-7xl p-6">
+      <div className="mb-6">
+        <h1 className="text-xl font-bold">Dashboard</h1>
+        <p className="text-sm text-muted-foreground">Model statistics and performance overview</p>
+      </div>
 
       {/* Stat cards */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
-        <StatCard
-          icon={<Cpu size={18} />}
-          label="Models"
-          value={stats.totals.models}
-          color="text-indigo-500"
-        />
-        <StatCard
-          icon={<FlaskConical size={18} />}
-          label="Compounds"
-          value={stats.totals.compounds}
-          color="text-emerald-500"
-        />
-        <StatCard
-          icon={<Database size={18} />}
-          label="Methods"
-          value={stats.totals.methods}
-          color="text-amber-500"
-        />
-        <StatCard
-          icon={<Activity size={18} />}
-          label="Runs"
-          value={stats.totals.runs}
-          color="text-rose-500"
-        />
-        <StatCard
-          icon={<Target size={18} />}
-          label="Predictions"
-          value={stats.totals.predictions}
-          color="text-violet-500"
-        />
+        <StatCard icon={<Cpu size={18} />} label="Models" value={stats.totals.models} color="hsl(var(--chart-1))" />
+        <StatCard icon={<FlaskConical size={18} />} label="Compounds" value={stats.totals.compounds} color="hsl(var(--chart-2))" />
+        <StatCard icon={<Database size={18} />} label="Methods" value={stats.totals.methods} color="hsl(var(--chart-3))" />
+        <StatCard icon={<Activity size={18} />} label="Runs" value={stats.totals.runs} color="hsl(var(--chart-4))" />
+        <StatCard icon={<Target size={18} />} label="Predictions" value={stats.totals.predictions} color="hsl(var(--chart-5))" />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Confidence gauge */}
-        <div className="card">
+        <div className="card-scientific">
           <h3 className="text-sm font-semibold">Avg. Prediction Confidence</h3>
           <ResponsiveContainer width="100%" height={180} className="mt-2">
             <RadialBarChart
               innerRadius="60%"
               outerRadius="100%"
-              data={[{ name: 'confidence', value: confidencePct, fill: '#6366f1' }]}
+              data={[{ name: 'confidence', value: confidencePct, fill: 'hsl(var(--chart-1))' }]}
               startAngle={90}
               endAngle={-270}
             >
-              <RadialBar dataKey="value" cornerRadius={8} fill="#6366f1" background />
+              <RadialBar dataKey="value" cornerRadius={8} fill="hsl(var(--chart-1))" background />
               <text
                 x="50%"
                 y="50%"
@@ -175,7 +160,7 @@ export function DashboardPage() {
         </div>
 
         {/* Models by type pie */}
-        <div className="card">
+        <div className="card-scientific">
           <h3 className="text-sm font-semibold">Models by Type</h3>
           {typeData.length > 0 ? (
             <ResponsiveContainer width="100%" height={180} className="mt-2">
@@ -195,7 +180,14 @@ export function DashboardPage() {
                     <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--card))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                  }}
+                />
               </PieChart>
             </ResponsiveContainer>
           ) : (
@@ -206,16 +198,23 @@ export function DashboardPage() {
         </div>
 
         {/* Models by column bar */}
-        <div className="card">
+        <div className="card-scientific">
           <h3 className="text-sm font-semibold">Models by Column Type</h3>
           {columnData.length > 0 ? (
             <ResponsiveContainer width="100%" height={180} className="mt-2">
               <BarChart data={columnData}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="name" fontSize={10} stroke="hsl(var(--muted-foreground))" />
                 <YAxis fontSize={10} stroke="hsl(var(--muted-foreground))" allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="models" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--card))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                  }}
+                />
+                <Bar dataKey="models" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -226,9 +225,9 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* Best model per column */}
+      {/* Best model per column + Recent activity */}
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="card">
+        <div className="card-scientific">
           <div className="flex items-center gap-2">
             <TrendingUp size={16} className="text-accent" />
             <h3 className="text-sm font-semibold">Best Model per Column Type</h3>
@@ -264,36 +263,35 @@ export function DashboardPage() {
           </div>
         </div>
 
-        {/* Recent models */}
-        <div className="card">
+        <div className="card-scientific">
           <div className="flex items-center gap-2">
             <Zap size={16} className="text-accent" />
             <h3 className="text-sm font-semibold">Recent Model Activity</h3>
           </div>
           <div className="mt-3 overflow-x-auto">
-            <table className="w-full text-xs">
+            <table className="data-table">
               <thead>
-                <tr className="border-b border-border text-left text-muted-foreground">
-                  <th className="pb-2 pr-3">Column</th>
-                  <th className="pb-2 pr-3">Type</th>
-                  <th className="pb-2 pr-3">Ver</th>
-                  <th className="pb-2 pr-3">Samples</th>
-                  <th className="pb-2 pr-3">R²</th>
-                  <th className="pb-2">Trained</th>
+                <tr>
+                  <th>Column</th>
+                  <th>Type</th>
+                  <th>Ver</th>
+                  <th>Samples</th>
+                  <th>R²</th>
+                  <th>Trained</th>
                 </tr>
               </thead>
               <tbody>
                 {stats.recent_models.length > 0 ? (
                   stats.recent_models.map((m) => (
-                    <tr key={m.id} className="border-b border-border last:border-0">
-                      <td className="py-1.5 pr-3 font-medium">{m.column_type}</td>
-                      <td className="py-1.5 pr-3">{m.model_type}</td>
-                      <td className="py-1.5 pr-3 tabular-nums">v{m.version}</td>
-                      <td className="py-1.5 pr-3 tabular-nums">{m.n_samples}</td>
-                      <td className="py-1.5 pr-3 tabular-nums">
+                    <tr key={m.id}>
+                      <td className="font-medium">{m.column_type}</td>
+                      <td>{m.model_type}</td>
+                      <td className="tabular-nums">v{m.version}</td>
+                      <td className="tabular-nums">{m.n_samples}</td>
+                      <td className="tabular-nums">
                         {m.r2 !== null ? m.r2.toFixed(3) : '—'}
                       </td>
-                      <td className="py-1.5 text-muted-foreground">
+                      <td className="text-muted-foreground">
                         {m.trained_at ? new Date(m.trained_at).toLocaleDateString() : '—'}
                       </td>
                     </tr>
@@ -310,7 +308,14 @@ export function DashboardPage() {
           </div>
         </div>
       </div>
-    </main>
+
+      {/* Calibration plot */}
+      {calibration && calibration.n_points > 0 && (
+        <div className="mt-6">
+          <CalibrationPlot data={calibration} />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -326,11 +331,13 @@ function StatCard({
   color: string;
 }) {
   return (
-    <div className="card flex items-center gap-3">
-      <div className={`shrink-0 ${color}`}>{icon}</div>
-      <div>
-        <p className="text-2xl font-bold tabular-nums">{value}</p>
-        <p className="text-xs text-muted-foreground">{label}</p>
+    <div className="stat-card" style={{ '--stat-color': color } as React.CSSProperties}>
+      <div className="flex items-center gap-3 pt-1">
+        <div className="shrink-0" style={{ color }}>{icon}</div>
+        <div>
+          <p className="text-2xl font-bold tabular-nums">{value}</p>
+          <p className="text-xs text-muted-foreground">{label}</p>
+        </div>
       </div>
     </div>
   );

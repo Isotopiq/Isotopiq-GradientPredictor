@@ -4,6 +4,7 @@ import type {
   MethodCreate,
   MethodSuggestion,
   MethodSuggestionRequest,
+  MethodTemplate,
   GradientSimulateRequest,
   GradientSimulateResult,
   ChromatogramRequest,
@@ -13,6 +14,19 @@ import type {
 export const methodsApi = {
   suggest: async (data: MethodSuggestionRequest) => {
     const { data: result } = await apiClient.post<MethodSuggestion>('/methods/suggest', data);
+    return result;
+  },
+
+  suggestMulti: async (smilesList: string[], params?: {
+    ionization_mode?: string;
+    retention_goal?: string;
+    gradient_time_min?: number;
+    flow_rate_ml_min?: number;
+  }) => {
+    const { data: result } = await apiClient.post('/methods/suggest-multi', {
+      smiles_list: smilesList,
+      ...params,
+    });
     return result;
   },
 
@@ -51,5 +65,43 @@ export const methodsApi = {
 
   delete: async (id: string) => {
     await apiClient.delete(`/methods/${id}`);
+  },
+
+  // Templates
+  listTemplates: async (category?: string) => {
+    const { data } = await apiClient.get<MethodTemplate[]>('/methods/templates/list', {
+      params: category ? { category } : {},
+    });
+    return data;
+  },
+
+  templateCategories: async () => {
+    const { data } = await apiClient.get<string[]>('/methods/templates/categories');
+    return data;
+  },
+
+  applyTemplate: async (templateId: string, name?: string) => {
+    const { data } = await apiClient.post<Method>(
+      `/methods/templates/${templateId}/apply`,
+      {},
+      { params: name ? { name } : {} },
+    );
+    return data;
+  },
+
+  // Sharing
+  share: async (id: string) => {
+    const { data } = await apiClient.post<Method>(`/methods/${id}/share`);
+    return data;
+  },
+
+  getShared: async (token: string) => {
+    const { data } = await apiClient.get<Method>(`/methods/shared/${token}`);
+    return data;
+  },
+
+  fork: async (id: string) => {
+    const { data } = await apiClient.post<Method>(`/methods/${id}/fork`);
+    return data;
   },
 };

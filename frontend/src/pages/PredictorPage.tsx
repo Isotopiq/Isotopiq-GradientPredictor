@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Save, Check } from 'lucide-react';
 import { StructureInput } from '@/components/StructureInput';
 import { PropertyPanel } from '@/components/PropertyPanel';
@@ -6,8 +7,11 @@ import { MethodSuggestionCard } from '@/components/MethodSuggestionCard';
 import { GradientChart } from '@/components/GradientChart';
 import { ChromatogramPreview } from '@/components/ChromatogramPreview';
 import { ParameterSliders } from '@/components/ParameterSliders';
+import { MoleculeViewer } from '@/components/MoleculeViewer';
+import { PkaPlotter } from '@/components/PkaPlotter';
 import { DisclaimerTooltip } from '@/components/DisclaimerTooltip';
 import { methodsApi } from '@/api/methods';
+import { toast } from 'sonner';
 import type {
   Compound,
   MethodSuggestion,
@@ -18,8 +22,9 @@ import type {
 } from '@/types';
 
 export function PredictorPage() {
+  const [searchParams] = useSearchParams();
   const [compound, setCompound] = useState<Compound | null>(null);
-  const [smiles, setSmiles] = useState('');
+  const [smiles, setSmiles] = useState(searchParams.get('smiles') || '');
   const [suggestion, setSuggestion] = useState<MethodSuggestion | null>(null);
   const [suggesting, setSuggesting] = useState(false);
   const [gradientTable, setGradientTable] = useState<GradientPoint[]>([]);
@@ -36,6 +41,7 @@ export function PredictorPage() {
     setCompound(c);
     setSaved(false);
     if (c.smiles) {
+      setSmiles(c.smiles);
       await fetchSuggestion(c.smiles);
     }
   };
@@ -51,7 +57,7 @@ export function PredictorPage() {
       setGradientTime(sugg.gradient.gradient_time_min);
       setPh(sugg.ph.recommended_ph);
     } catch {
-      // ignore
+      toast.error('Failed to generate suggestion — check SMILES validity');
     } finally {
       setSuggesting(false);
     }
@@ -62,6 +68,7 @@ export function PredictorPage() {
     setSaving(true);
     try {
       await methodsApi.create({
+        name: compound?.name || 'Predicted Method',
         column_type: suggestion.column.column_type,
         ph,
         mobile_phase_a: 'Water',
@@ -72,9 +79,10 @@ export function PredictorPage() {
         gradient_table: gradientTable,
       });
       setSaved(true);
+      toast.success('Method saved to library');
       setTimeout(() => setSaved(false), 3000);
     } catch {
-      // ignore
+      toast.error('Failed to save method');
     } finally {
       setSaving(false);
     }
@@ -82,15 +90,41 @@ export function PredictorPage() {
 
   const logp = suggestion?.descriptors.logp ?? compound?.logp ?? 2.0;
 
+  // Auto-fetch suggestion if SMILES is in URL
+  useEffect(() => {
+    const urlSmiles = searchParams.get('smiles');
+    if (urlSmiles) {
+      setSmiles(urlSmiles);
+      fetchSuggestion(urlSmiles);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
-    <main className="mx-auto max-w-7xl px-4 py-6">
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* Left: structure input + properties */}
+    <div className="mx-auto max-w-7xl p-6">
+      <div className="mb-6">
+        <h1 className="text-xl font-bold">LC-MS Method Predictor</h1>
+        <p className="text-sm text-muted-foreground">
+          Predict chromatographic method parameters from molecular structure
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Left: structure input + properties + molecule viewer */}
         <div className="space-y-4">
           <StructureInput
             onCompoundCreated={handleCompoundCreated}
             onSmilesChange={setSmiles}
           />
+
+          {/* 2D Molecule Viewer */}
+          {smiles && (
+            <div className="card-scientific">
+              <h3 className="mb-2 text-sm font-semibold">2D Structure</h3>
+              <MoleculeViewer smiles={smiles} width={280} height={200} className="mx-auto" />
+            </div>
+          )}
+
           <PropertyPanel
             compound={compound}
             descriptors={suggestion?.descriptors}
@@ -106,6 +140,9 @@ export function PredictorPage() {
             predictedRtS={simResult?.predicted_rt_s}
           />
           <ChromatogramPreview chromatogram={chromatogram} loading={suggesting} />
+
+          {/* pKa Plotter */}
+          {smiles && suggestion?.ionizable && <PkaPlotter smiles={smiles} />}
 
           {/* Save method button */}
           {suggestion && (
@@ -148,9 +185,10 @@ export function PredictorPage() {
           />
         </div>
       </div>
+
       <div className="mt-4">
         <DisclaimerTooltip />
       </div>
-    </main>
+    </div>
   );
 }

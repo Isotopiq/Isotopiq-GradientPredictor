@@ -1,15 +1,17 @@
 import { useState, useCallback } from 'react';
-import { Upload, FileText } from 'lucide-react';
+import { Upload, FileText, Download } from 'lucide-react';
 import { mlApi } from '@/api/ml';
 import { InfoTooltip } from '@/components/InfoTooltip';
+import { toast } from 'sonner';
 
 interface DataUploadProps {
   onTrained: () => void;
+  defaultColumn?: string;
 }
 
-export function DataUpload({ onTrained }: DataUploadProps) {
+export function DataUpload({ onTrained, defaultColumn }: DataUploadProps) {
   const [file, setFile] = useState<File | null>(null);
-  const [columnType, setColumnType] = useState('C18');
+  const [columnType, setColumnType] = useState(defaultColumn || 'C18');
   const [modelType, setModelType] = useState('xgboost');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,16 +36,18 @@ export function DataUpload({ onTrained }: DataUploadProps) {
       const res = await mlApi.trainFromCsv(file, columnType, modelType);
       setResult(res);
       onTrained();
+      toast.success(`Model trained: v${res.version} (${res.n_samples} samples)`);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setError(msg || 'Training failed');
+      toast.error(msg || 'Training failed');
     } finally {
       setLoading(false);
     }
   }, [file, columnType, modelType, onTrained]);
 
   return (
-    <div className="card space-y-4">
+    <div className="card-scientific space-y-4">
       <div className="flex items-center gap-2">
         <h3 className="text-sm font-semibold">Upload Training Data</h3>
         <InfoTooltip
@@ -77,6 +81,13 @@ export function DataUpload({ onTrained }: DataUploadProps) {
           Columns: smiles, column_type, ph, percent_b_start, percent_b_end,
           gradient_time_min, flow_ml_min, temperature_c, observed_rt_s
         </p>
+        <a
+          href="/examples/training_data_example.csv"
+          download
+          className="mt-1 inline-flex items-center gap-1 text-xs text-accent hover:underline"
+        >
+          <Download size={11} /> Download example CSV
+        </a>
       </div>
 
       <div className="grid grid-cols-2 gap-3">

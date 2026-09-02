@@ -23,11 +23,11 @@ export function InfoTooltip({ content, title, size = 14 }: InfoTooltipProps) {
         <HelpCircle size={size} />
       </button>
       {show && (
-        <span className="absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 rounded-md border border-border bg-popover p-3 text-xs shadow-lg">
+        <span className="absolute bottom-full left-1/2 z-[100] mb-2 w-72 -translate-x-1/2 rounded-lg border border-border bg-card p-3 text-xs shadow-xl">
           {title && (
             <span className="mb-1 block font-semibold text-foreground">{title}</span>
           )}
-          <span className="block text-muted-foreground">{content}</span>
+          <span className="block text-foreground/90 leading-relaxed">{content}</span>
           <span className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-border" />
         </span>
       )}

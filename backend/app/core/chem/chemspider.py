@@ -117,7 +117,7 @@ async def _pubchem_search_multi(name: str, limit: int) -> list[dict[str, str]]:
     base = settings.pubchem_base_url.rstrip("/")
     quoted = urllib.parse.quote(name.strip(), safe="")
     # Use the name search with multiple results
-    url = f"{base}/compound/name/{quoted}/property/CanonicalSMILES,InChIKey,MolecularFormula,MolecularWeight/JSON"
+    url = f"{base}/compound/name/{quoted}/property/CanonicalSMILES,ConnectivitySMILES,InChIKey,MolecularFormula,MolecularWeight/JSON"
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         try:
@@ -132,9 +132,11 @@ async def _pubchem_search_multi(name: str, limit: int) -> list[dict[str, str]]:
     props = data.get("PropertyTable", {}).get("Properties", [])
     results: list[dict[str, str]] = []
     for p in props[:limit]:
+        # PubChem may return CanonicalSMILES or ConnectivitySMILES depending on version
+        smiles = p.get("CanonicalSMILES") or p.get("ConnectivitySMILES", "")
         results.append({
             "name": name,
-            "smiles": p.get("CanonicalSMILES", ""),
+            "smiles": smiles,
             "inchikey": p.get("InChIKey", ""),
             "formula": p.get("MolecularFormula", ""),
             "mw": p.get("MolecularWeight", ""),

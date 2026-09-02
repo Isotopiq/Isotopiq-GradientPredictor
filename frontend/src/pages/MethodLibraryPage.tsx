@@ -1,42 +1,61 @@
-import { useEffect, useState, useCallback } from 'react';
-import { Trash2, Download, Eye, FlaskConical, Plus } from 'lucide-react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
+import {
+  Trash2, Download, Eye, FlaskConical, Plus, Share2, Copy, ChevronDown,
+} from 'lucide-react';
 import { methodsApi } from '@/api/methods';
 import { apiClient } from '@/api/client';
+import { GradientChart } from '@/components/GradientChart';
+import { EmptyState } from '@/components/EmptyState';
+import { Skeleton } from '@/components/Skeleton';
+import { toast } from 'sonner';
 import type { Method } from '@/types';
 
 export function MethodLibraryPage() {
-  const [methods, setMethods] = useState<Method[]>([]);
-  const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Method | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await methodsApi.list();
-      setMethods(data);
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const { data: methods, isLoading } = useQuery({
+    queryKey: ['methods-library'],
+    queryFn: () => methodsApi.list(),
+  });
 
   useEffect(() => {
-    load();
-  }, [load]);
+    const handler = (e: MouseEvent) => {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
+        setExportOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this method? This cannot be undone.')) return;
-    try {
-      await methodsApi.delete(id);
-      await load();
-      if (selected?.id === id) setSelected(null);
-    } catch {
-      // ignore
-    }
-  };
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => methodsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['methods-library'] });
+      setSelected(null);
+      toast.success('Method deleted');
+    },
+    onError: () => toast.error('Failed to delete method'),
+  });
 
-  const handleExport = async (id: string, format: 'pdf' | 'csv') => {
+  const shareMutation = useMutation({
+    mutationFn: (id: string) => methodsApi.share(id),
+    onSuccess: (method) => {
+      setSelected(method);
+      const url = `${window.location.origin}/shared/${method.share_token}`;
+      navigator.clipboard.writeText(url).catch(() => {});
+      toast.success('Share link copied to clipboard!');
+    },
+    onError: () => toast.error('Failed to share method'),
+  });
+
+  const handleExport = useCallback(async (id: string, format: string, ext: string) => {
     try {
       const resp = await apiClient.get(`/export/method/${id}`, {
         params: { format },
@@ -45,82 +64,79 @@ export function MethodLibraryPage() {
       const url = URL.createObjectURL(resp.data);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `method_${id}.${format}`;
+      a.download = `method_${id}.${ext}`;
       a.click();
       URL.revokeObjectURL(url);
+      toast.success(`Exported as ${ext.toUpperCase()}`);
+      setExportOpen(false);
     } catch {
-      // ignore
+      toast.error('Export failed');
     }
-  };
+  }, []);
+
+  const exportFormats = [
+    { label: 'PDF Report', format: 'pdf', ext: 'pdf' },
+    { label: 'CSV', format: 'csv', ext: 'csv' },
+    { label: 'Agilent (.m)', format: 'agilent', ext: 'm' },
+    { label: 'Waters (.mth)', format: 'waters', ext: 'mth' },
+    { label: 'Thermo (.xml)', format: 'thermo', ext: 'xml' },
+  ];
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold">Method Library</h1>
-        <button
-          onClick={() => (window.location.href = '/')}
-          className="btn-outline flex items-center gap-1.5 text-sm"
-        >
-          <Plus size={14} />
-          New Method
+    <div className="mx-auto max-w-7xl p-6">
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold">Method Library</h1>
+          <p className="text-sm text-muted-foreground">Saved LC methods</p>
+        </div>
+        <button onClick={() => navigate('/')} className="btn-outline btn-sm">
+          <Plus size={14} className="mr-1" /> New Method
         </button>
       </div>
 
-      {loading ? (
-        <div className="card animate-pulse">
-          <div className="h-4 w-32 rounded bg-muted" />
-        </div>
-      ) : methods.length === 0 ? (
-        <div className="card flex flex-col items-center gap-3 py-12 text-center">
-          <FlaskConical size={32} className="text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">
-            No saved methods yet. Use the Predictor to generate and save a method.
-          </p>
-          <button
-            onClick={() => (window.location.href = '/')}
-            className="btn-primary text-sm"
-          >
-            Go to Predictor
-          </button>
-        </div>
+      {isLoading ? (
+        <Skeleton className="h-64" />
+      ) : !methods || methods.length === 0 ? (
+        <EmptyState
+          icon={<FlaskConical size={24} />}
+          title="No saved methods yet"
+          description="Use the Predictor to generate and save a method."
+          action={
+            <button onClick={() => navigate('/')} className="btn-primary btn-sm">
+              Go to Predictor
+            </button>
+          }
+        />
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* Method list */}
           <div className="lg:col-span-1">
-            <div className="card overflow-x-auto">
-              <table className="w-full text-sm">
+            <div className="card-scientific overflow-x-auto">
+              <h2 className="mb-3 text-sm font-semibold">Methods ({methods.length})</h2>
+              <table className="data-table">
                 <thead>
-                  <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                    <th className="py-2 pr-3">Column</th>
-                    <th className="py-2 pr-3">pH</th>
-                    <th className="py-2 pr-3">Flow</th>
-                    <th className="py-2"></th>
+                  <tr>
+                    <th>Name</th>
+                    <th>Column</th>
+                    <th>pH</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {methods.map((m) => (
                     <tr
                       key={m.id}
-                      className={`cursor-pointer border-b border-border last:border-0 hover:bg-muted/50 ${
-                        selected?.id === m.id ? 'bg-muted' : ''
-                      }`}
+                      className="cursor-pointer"
                       onClick={() => setSelected(m)}
+                      style={selected?.id === m.id ? { background: 'hsl(var(--muted))' } : undefined}
                     >
-                      <td className="py-2 pr-3 font-medium">{m.column_type}</td>
-                      <td className="py-2 pr-3 tabular-nums">{m.ph ?? '—'}</td>
-                      <td className="py-2 pr-3 tabular-nums">
-                        {m.flow_rate_ml_min ?? '—'}
+                      <td className="font-medium">{m.name || 'Unnamed'}</td>
+                      <td>
+                        <span className="badge badge-info">{m.column_type}</span>
                       </td>
-                      <td className="py-2">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(m.id);
-                          }}
-                          className="text-muted-foreground hover:text-destructive"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                      <td className="tabular-nums">{m.ph?.toFixed(1) ?? '—'}</td>
+                      <td>
+                        {m.is_shared && <Share2 size={12} className="text-success" />}
                       </td>
                     </tr>
                   ))}
@@ -132,83 +148,134 @@ export function MethodLibraryPage() {
           {/* Method detail */}
           <div className="lg:col-span-2">
             {selected ? (
-              <div className="card space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold">Method Details</h3>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleExport(selected.id, 'csv')}
-                      className="btn-outline flex items-center gap-1 text-xs"
-                    >
-                      <Download size={12} />
-                      CSV
-                    </button>
-                    <button
-                      onClick={() => handleExport(selected.id, 'pdf')}
-                      className="btn-outline flex items-center gap-1 text-xs"
-                    >
-                      <Download size={12} />
-                      PDF
-                    </button>
+              <div className="space-y-4">
+                <div className="card-scientific">
+                  <div className="section-header mb-4">
+                    <div>
+                      <h2 className="text-sm font-bold">{selected.name || 'Unnamed Method'}</h2>
+                      <p className="text-xs text-muted-foreground">
+                        {selected.column_type} • {selected.is_shared ? 'Shared' : 'Private'}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      {/* Share button */}
+                      <button
+                        onClick={() => shareMutation.mutate(selected.id)}
+                        className="btn-outline btn-sm"
+                        disabled={shareMutation.isPending}
+                      >
+                        <Share2 size={14} className="mr-1" />
+                        {selected.is_shared ? 'Copy Link' : 'Share'}
+                      </button>
+
+                      {/* Export dropdown */}
+                      <div className="relative" ref={exportRef}>
+                        <button
+                          onClick={() => setExportOpen(!exportOpen)}
+                          className="btn-outline btn-sm"
+                        >
+                          <Download size={14} className="mr-1" /> Export
+                          <ChevronDown size={12} className="ml-1" />
+                        </button>
+                        {exportOpen && (
+                          <div className="absolute right-0 top-10 z-50 w-48 overflow-hidden rounded-lg border border-border bg-card shadow-lg animate-slide-down">
+                            {exportFormats.map((f) => (
+                              <button
+                                key={f.format}
+                                onClick={() => handleExport(selected.id, f.format, f.ext)}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-xs hover:bg-muted"
+                              >
+                                <Download size={12} /> {f.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          if (confirm('Delete this method?')) deleteMutation.mutate(selected.id);
+                        }}
+                        className="btn-outline btn-sm text-destructive"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <DetailRow label="Column" value={selected.column_type} />
+                    <DetailRow label="pH" value={selected.ph?.toFixed(1) ?? '—'} />
+                    <DetailRow label="Flow Rate" value={selected.flow_rate_ml_min ? `${selected.flow_rate_ml_min} mL/min` : '—'} />
+                    <DetailRow label="Temperature" value={selected.temperature_c ? `${selected.temperature_c}°C` : '—'} />
+                    <DetailRow label="Mobile Phase A" value={selected.mobile_phase_a ?? '—'} />
+                    <DetailRow label="Mobile Phase B" value={selected.mobile_phase_b ?? '—'} />
+                    <DetailRow label="Additive" value={selected.additive ?? '—'} />
+                    <DetailRow label="Steps" value={selected.gradient_table ? `${selected.gradient_table.length}` : '—'} />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <DetailRow label="Column" value={selected.column_type} />
-                  <DetailRow label="pH" value={selected.ph?.toString() ?? '—'} />
-                  <DetailRow
-                    label="Flow Rate"
-                    value={selected.flow_rate_ml_min ? `${selected.flow_rate_ml_min} mL/min` : '—'}
-                  />
-                  <DetailRow
-                    label="Temperature"
-                    value={selected.temperature_c ? `${selected.temperature_c}°C` : '—'}
-                  />
-                  <DetailRow label="Mobile Phase A" value={selected.mobile_phase_a ?? '—'} />
-                  <DetailRow label="Mobile Phase B" value={selected.mobile_phase_b ?? '—'} />
-                  <DetailRow label="Additive" value={selected.additive ?? '—'} />
-                  <DetailRow
-                    label="Gradient Points"
-                    value={selected.gradient_table ? `${selected.gradient_table.length} steps` : '—'}
-                  />
-                </div>
-
                 {selected.gradient_table && selected.gradient_table.length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground">Gradient Program</p>
-                    <table className="mt-1 w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-border text-left text-muted-foreground">
-                          <th className="py-1.5 pr-3">Time (min)</th>
-                          <th className="py-1.5">%B</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selected.gradient_table.map((p, i) => (
-                          <tr key={i} className="border-b border-border last:border-0">
-                            <td className="py-1.5 pr-3 tabular-nums">
-                              {(p.time_s / 60).toFixed(2)}
-                            </td>
-                            <td className="py-1.5 tabular-nums">{p.percent_b.toFixed(1)}</td>
+                  <div className="card-scientific">
+                    <h3 className="mb-3 text-sm font-semibold">Gradient Profile</h3>
+                    <GradientChart gradientTable={selected.gradient_table} />
+                    <div className="mt-3 overflow-x-auto">
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>Step</th>
+                            <th>Time (min)</th>
+                            <th>%B</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {selected.gradient_table.map((p, i) => (
+                            <tr key={i}>
+                              <td className="text-muted-foreground">{i + 1}</td>
+                              <td className="tabular-nums">{(p.time_s / 60).toFixed(2)}</td>
+                              <td className="tabular-nums">{p.percent_b.toFixed(1)}%</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {selected.is_shared && selected.share_token && (
+                  <div className="card-scientific-success">
+                    <div className="flex items-center gap-2">
+                      <Share2 size={16} className="text-success" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">Shared Method</p>
+                        <p className="text-xs text-muted-foreground">
+                          Share link: {window.location.origin}/shared/{selected.share_token}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(`${window.location.origin}/shared/${selected.share_token}`);
+                          toast.success('Link copied');
+                        }}
+                        className="btn-outline btn-sm"
+                      >
+                        <Copy size={12} className="mr-1" /> Copy
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
             ) : (
-              <div className="card flex h-full flex-col items-center justify-center gap-2 text-center">
-                <Eye size={32} className="text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">
-                  Select a method from the list to view details.
-                </p>
-              </div>
+              <EmptyState
+                icon={<Eye size={24} />}
+                title="Select a method"
+                description="Click a method from the list to view details"
+              />
             )}
           </div>
         </div>
       )}
-    </main>
+    </div>
   );
 }
 

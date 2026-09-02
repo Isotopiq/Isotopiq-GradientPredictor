@@ -8,6 +8,7 @@ vi.mock('@/api/compounds', () => ({
   compoundsApi: {
     create: vi.fn().mockResolvedValue({ id: '1', smiles: 'CCO', mw: 46 }),
     pubchemLookup: vi.fn().mockResolvedValue({ smiles: 'CN1C=NC2=C1C(=O)N(C(=O)N2C)C' }),
+    searchMulti: vi.fn().mockResolvedValue([]),
   },
 }));
 
@@ -30,8 +31,8 @@ describe('StructureInput', () => {
         <StructureInput onCompoundCreated={() => {}} onSmilesChange={() => {}} />
       </ThemeProvider>,
     );
-    fireEvent.click(screen.getByText('Search'));
-    expect(screen.getByPlaceholderText(/e\.g\. caffeine/i)).toBeInTheDocument();
+    // Search is the default tab, so the search input should be visible
+    expect(screen.getByPlaceholderText(/Search compound by name/i)).toBeInTheDocument();
   });
 
   it('has a calculate button', () => {

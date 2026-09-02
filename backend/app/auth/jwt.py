@@ -20,12 +20,18 @@ def _create_token(subject: str, ttl: timedelta, token_type: str) -> str:
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
-def create_access_token(subject: str) -> str:
-    return _create_token(subject, timedelta(minutes=settings.access_token_ttl_minutes), "access")
+def create_access_token(subject: str, remember_me: bool = False) -> str:
+    ttl = timedelta(minutes=settings.access_token_ttl_minutes)
+    if remember_me:
+        ttl = timedelta(days=30)
+    return _create_token(subject, ttl, "access")
 
 
-def create_refresh_token(subject: str) -> str:
-    return _create_token(subject, timedelta(days=settings.refresh_token_ttl_days), "refresh")
+def create_refresh_token(subject: str, remember_me: bool = False) -> str:
+    ttl = timedelta(days=settings.refresh_token_ttl_days)
+    if remember_me:
+        ttl = timedelta(days=90)
+    return _create_token(subject, ttl, "refresh")
 
 
 def decode_access_token(token: str) -> dict[str, Any]:

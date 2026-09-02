@@ -66,3 +66,8 @@ class PubChemLookupOut(BaseModel):
     inchikey: str
     formula: str
     mw: str
+
+
+class CompoundBatchCreate(BaseModel):
+    """Batch create multiple compounds."""
+    compounds: list[CompoundCreate] = Field(min_length=1, max_length=500)

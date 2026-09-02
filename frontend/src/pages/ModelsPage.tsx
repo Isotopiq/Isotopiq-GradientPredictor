@@ -1,101 +1,173 @@
-import { useEffect, useState } from 'react';
-import { Trash2, Database } from 'lucide-react';
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Trash2, Database, ChevronRight, BarChart3 } from 'lucide-react';
 import { mlApi } from '@/api/ml';
+import { FeatureImportanceChart } from '@/components/FeatureImportanceChart';
+import { LearningCurveChart } from '@/components/LearningCurveChart';
+import { EmptyState } from '@/components/EmptyState';
+import { Skeleton } from '@/components/Skeleton';
+import { toast } from 'sonner';
 import type { ModelArtifact } from '@/types';
 
 export function ModelsPage() {
-  const [models, setModels] = useState<ModelArtifact[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const data = await mlApi.listModels();
-      setModels(data);
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data: models, isLoading } = useQuery({
+    queryKey: ['ml-models'],
+    queryFn: () => mlApi.listModels(),
+  });
 
-  useEffect(() => {
-    load();
-  }, []);
+  const { data: selectedModel } = useQuery({
+    queryKey: ['ml-model', selectedId],
+    queryFn: () => mlApi.getModel(selectedId!),
+    enabled: !!selectedId,
+  });
 
-  const handleDelete = async (id: string) => {
-    try {
-      await mlApi.deleteModel(id);
-      await load();
-    } catch {
-      // ignore
-    }
-  };
+  const { data: featureImportance } = useQuery({
+    queryKey: ['feature-importance', selectedId],
+    queryFn: () => mlApi.featureImportance(selectedId!),
+    enabled: !!selectedId,
+  });
+
+  const { data: modelHistory } = useQuery({
+    queryKey: ['model-history', selectedId],
+    queryFn: () => mlApi.modelHistory(selectedId!),
+    enabled: !!selectedId,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => mlApi.deleteModel(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ml-models'] });
+      setSelectedId(null);
+      toast.success('Model deleted');
+    },
+    onError: () => toast.error('Failed to delete model'),
+  });
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border">
-        <div className="mx-auto max-w-7xl px-4 py-3">
-          <h1 className="text-lg font-bold">ML Models</h1>
-        </div>
-      </header>
+    <div className="mx-auto max-w-7xl p-6">
+      <div className="mb-6">
+        <h1 className="text-xl font-bold">ML Models</h1>
+        <p className="text-sm text-muted-foreground">Trained retention prediction models</p>
+      </div>
 
-      <main className="mx-auto max-w-7xl px-4 py-6">
-        {loading ? (
-          <div className="card animate-pulse">
-            <div className="h-4 w-32 rounded bg-muted" />
-          </div>
-        ) : models.length === 0 ? (
-          <div className="card flex flex-col items-center gap-2 text-sm text-muted-foreground">
-            <Database size={24} />
-            <p>No trained models yet. Upload training data to get started.</p>
-          </div>
-        ) : (
-          <div className="card overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th className="py-2 pr-4">Column</th>
-                  <th className="py-2 pr-4">Model</th>
-                  <th className="py-2 pr-4">Version</th>
-                  <th className="py-2 pr-4">Samples</th>
-                  <th className="py-2 pr-4">R²</th>
-                  <th className="py-2 pr-4">RMSE</th>
-                  <th className="py-2 pr-4">Trained</th>
-                  <th className="py-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {models.map((m) => (
-                  <tr key={m.id} className="border-b border-border last:border-0">
-                    <td className="py-2 pr-4 font-medium">{m.column_type}</td>
-                    <td className="py-2 pr-4">{m.model_type}</td>
-                    <td className="py-2 pr-4 tabular-nums">v{m.version}</td>
-                    <td className="py-2 pr-4 tabular-nums">{m.n_samples}</td>
-                    <td className="py-2 pr-4 tabular-nums">
-                      {(m.train_metrics as Record<string, number>)?.r2?.toFixed(3) ?? '—'}
-                    </td>
-                    <td className="py-2 pr-4 tabular-nums">
-                      {(m.train_metrics as Record<string, number>)?.rmse?.toFixed(2) ?? '—'}
-                    </td>
-                    <td className="py-2 pr-4 text-xs text-muted-foreground">
-                      {new Date(m.trained_at).toLocaleDateString()}
-                    </td>
-                    <td className="py-2">
-                      <button
-                        onClick={() => handleDelete(m.id)}
-                        className="text-muted-foreground hover:text-destructive"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </td>
+      {isLoading ? (
+        <Skeleton className="h-64" />
+      ) : !models || models.length === 0 ? (
+        <EmptyState
+          icon={<Database size={24} />}
+          title="No trained models yet"
+          description="Upload training data to get started"
+        />
+      ) : (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          {/* Model list */}
+          <div className="lg:col-span-1">
+            <div className="card-scientific overflow-x-auto">
+              <h2 className="mb-3 text-sm font-semibold">Models ({models.length})</h2>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Column</th>
+                    <th>Type</th>
+                    <th>Ver</th>
+                    <th>R²</th>
+                    <th></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {models.map((m: ModelArtifact) => (
+                    <tr
+                      key={m.id}
+                      onClick={() => setSelectedId(m.id)}
+                      className="cursor-pointer"
+                      style={selectedId === m.id ? { background: 'hsl(var(--muted))' } : undefined}
+                    >
+                      <td className="font-medium">{m.column_type}</td>
+                      <td>
+                        <span className="badge badge-info">{m.model_type}</span>
+                      </td>
+                      <td className="tabular-nums">v{m.version}</td>
+                      <td className="tabular-nums">
+                        {(m.train_metrics as Record<string, number>)?.r2?.toFixed(3) ?? '—'}
+                      </td>
+                      <td>
+                        <ChevronRight size={14} className="text-muted-foreground" />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        )}
-      </main>
+
+          {/* Model detail */}
+          <div className="lg:col-span-2 space-y-4">
+            {selectedModel ? (
+              <>
+                <div className="card-scientific">
+                  <div className="section-header mb-3">
+                    <div>
+                      <h2 className="text-sm font-bold">
+                        {selectedModel.column_type} • {selectedModel.model_type} v{selectedModel.version}
+                      </h2>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedModel.n_samples} samples • Trained {new Date(selectedModel.trained_at).toLocaleString()}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => deleteMutation.mutate(selectedModel.id)}
+                      className="btn-outline btn-sm text-destructive"
+                    >
+                      <Trash2 size={14} className="mr-1" /> Delete
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <MetricBox
+                      label="R²"
+                      value={(selectedModel.train_metrics as Record<string, number>)?.r2?.toFixed(3) ?? '—'}
+                    />
+                    <MetricBox
+                      label="RMSE"
+                      value={(selectedModel.train_metrics as Record<string, number>)?.rmse?.toFixed(2) ?? '—'}
+                    />
+                    <MetricBox
+                      label="Samples"
+                      value={String(selectedModel.n_samples)}
+                    />
+                  </div>
+                </div>
+
+                {modelHistory && modelHistory.versions.length > 0 && (
+                  <LearningCurveChart versions={modelHistory.versions} />
+                )}
+
+                {featureImportance && (
+                  <FeatureImportanceChart data={featureImportance} />
+                )}
+              </>
+            ) : (
+              <EmptyState
+                icon={<BarChart3 size={24} />}
+                title="Select a model"
+                description="Click a model from the list to view detailed analytics"
+              />
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MetricBox({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border p-3">
+      <p className="text-lg font-bold tabular-nums">{value}</p>
+      <p className="text-xs text-muted-foreground">{label}</p>
     </div>
   );
 }

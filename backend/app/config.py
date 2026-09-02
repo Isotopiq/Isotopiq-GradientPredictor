@@ -20,6 +20,17 @@ class Settings(BaseSettings):
     admin_email: str = "admin@example.com"
     admin_password: str = "changeme-admin-2024!"
 
+    # SMTP settings for password reset emails
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = "noreply@isotopiq.app"
+    smtp_from_name: str = "IsotopiQ"
+    smtp_use_tls: bool = True
+    # Frontend URL for building reset links
+    frontend_url: str = "http://localhost:18780"
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

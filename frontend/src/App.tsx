@@ -15,6 +15,9 @@ import { MethodComparisonPage } from '@/pages/MethodComparisonPage';
 import { ColumnDatabasePage } from '@/pages/ColumnDatabasePage';
 import { TemplatesPage } from '@/pages/TemplatesPage';
 import { SharedMethodPage } from '@/pages/SharedMethodPage';
+import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
+import { AdminPage } from '@/pages/AdminPage';
+import { ProfilePage } from '@/pages/ProfilePage';
 import type { ReactNode } from 'react';
 
 const queryClient = new QueryClient();
@@ -30,6 +33,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/shared/:token" element={<SharedMethodPage />} />
       <Route
         path="/dashboard"
@@ -117,6 +121,26 @@ function AppRoutes() {
           <ProtectedRoute>
             <AppShell>
               <TemplatesPage />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <AdminPage />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <ProfilePage />
             </AppShell>
           </ProtectedRoute>
         }

@@ -33,3 +33,7 @@ class Method(Base, UUIDPK, Timestamped):
 
     # Hash of column+pH+modifier signature used to key ML models
     method_signature: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+
+    # Sharing
+    is_shared: Mapped[bool] = mapped_column(default=False, nullable=False)
+    share_token: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)

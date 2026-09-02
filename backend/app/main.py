@@ -7,11 +7,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import auth as auth_routes
+from app.api.routes import admin as admin_routes
+from app.api.routes import columns as column_routes
 from app.api.routes import compounds as compound_routes
 from app.api.routes import export as export_routes
 from app.api.routes import health as health_routes
 from app.api.routes import methods as method_routes
 from app.api.routes import ml as ml_routes
+from app.api.routes import notifications as notification_routes
 from app.api.routes import predictions as prediction_routes
 from app.api.routes import runs as run_routes
 from app.config import settings
@@ -68,6 +71,9 @@ def create_app() -> FastAPI:
     app.include_router(run_routes.router, prefix=api_prefix)
     app.include_router(ml_routes.router, prefix=api_prefix)
     app.include_router(export_routes.router, prefix=api_prefix)
+    app.include_router(column_routes.router, prefix=api_prefix)
+    app.include_router(notification_routes.router, prefix=api_prefix)
+    app.include_router(admin_routes.router, prefix=api_prefix)
 
     @app.get("/")
     async def root() -> dict[str, str]:

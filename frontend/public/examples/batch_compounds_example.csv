@@ -1,0 +1,11 @@
+name,smiles
+Aspirin,CC(=O)Oc1ccccc1C(=O)O
+Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C
+Ibuprofen,CC(C)Cc1ccc(cc1)C(C)C(=O)O
+Acetaminophen,CC(=O)NC1=CC=C(O)C=C1
+Diphenhydramine,CN(C)CCC=C1ccccc1
+Salicylic acid,Oc1ccc(cc1)C(=O)O
+Benzoic acid,OC(=O)Cc1ccccc1
+Phenol,Oc1ccccc1
+Ethanol,CCO
+Naproxen,CC(C)C1=C(C(=CC=C1)C(=O)O)C(=O)O

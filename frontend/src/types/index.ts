@@ -5,6 +5,32 @@ export interface User {
   email: string;
   full_name: string | null;
   is_admin: boolean;
+  is_active: boolean;
+  has_profile_picture: boolean;
+  last_login_at: string | null;
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  full_name: string | null;
+  is_admin: boolean;
+  is_active: boolean;
+  has_profile_picture: boolean;
+  last_login_at: string | null;
+  created_at: string | null;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  user_id: string | null;
+  user_email: string | null;
+  action: string;
+  resource_type: string | null;
+  resource_id: string | null;
+  detail: string | null;
+  ip_address: string | null;
+  created_at: string | null;
 }
 
 export interface TokenPair {
@@ -65,6 +91,8 @@ export interface Method {
   flow_rate_ml_min: number | null;
   temperature_c: number | null;
   method_signature: string | null;
+  is_shared: boolean;
+  share_token: string | null;
 }
 
 export interface MethodCreate {
@@ -228,4 +256,101 @@ export interface TrainResponse {
   n_samples: number;
   metrics: Record<string, number>;
   trained_at: string;
+}
+
+// --- New types for megaplan features ---
+
+export interface ColumnSpec {
+  id: string;
+  brand: string;
+  name: string;
+  chemistry: string;
+  particle_size_um: number;
+  length_mm: number;
+  inner_diameter_mm: number;
+  ph_min: number;
+  ph_max: number;
+  temperature_max_c: number;
+  usp_code: string | null;
+  notes: string;
+}
+
+export interface MethodTemplate {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  column_type: string;
+  mobile_phase_a: string;
+  mobile_phase_b: string;
+  additive: string;
+  ph: number;
+  percent_b_start: number;
+  percent_b_end: number;
+  gradient_time_min: number;
+  flow_rate_ml_min: number;
+  temperature_c: number;
+  column_length_mm: number;
+  particle_size_um: number;
+}
+
+export interface PkaPlotData {
+  smiles: string;
+  sites: Array<{ pka: number; acid_base: string; atom_idx: number }>;
+  pka_values: number[];
+  logp: number;
+  fractions: Array<{ ph: number; fraction_ionized: number; logd: number }>;
+  recommended_ph: number;
+}
+
+export interface FeatureImportance {
+  model_id: string;
+  model_type: string;
+  column_type: string;
+  version: number;
+  features: Array<{ name: string; importance: number }>;
+}
+
+export interface ModelHistory {
+  column_type: string;
+  method_signature: string;
+  versions: Array<{
+    id: string;
+    version: number;
+    model_type: string;
+    n_samples: number;
+    r2: number | null;
+    rmse: number | null;
+    residual_std: number | null;
+    trained_at: string | null;
+  }>;
+}
+
+export interface CalibrationData {
+  points: Array<{
+    compound_smiles: string;
+    compound_name: string | null;
+    predicted_rt_s: number;
+    observed_rt_s: number;
+    residual: number;
+    model_version: string;
+    confidence: number;
+  }>;
+  n_points: number;
+  regression: {
+    slope: number;
+    intercept: number;
+    r2: number;
+    rmse: number;
+  };
+}
+
+export interface Notification {
+  id: string;
+  type: string;
+  column_type: string;
+  new_run_count: number;
+  last_trained_at: string | null;
+  message: string;
+  severity: 'info' | 'warning';
 }

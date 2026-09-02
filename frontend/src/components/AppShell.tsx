@@ -10,12 +10,16 @@ import {
   GitCompare,
   Database,
   LayoutTemplate,
+  Settings,
+  UserCircle,
   LogOut,
   Menu,
   X,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { NotificationBell } from '@/components/NotificationBell';
+import { CommandPalette } from '@/components/CommandPalette';
 import { Logo } from '@/components/Logo';
 import { cn } from '@/lib/utils';
 
@@ -55,6 +59,13 @@ const navSections: NavSection[] = [
       { to: '/templates', label: 'Templates', icon: LayoutTemplate },
     ],
   },
+  {
+    title: 'Administration',
+    items: [
+      { to: '/admin', label: 'Admin Panel', icon: Settings },
+      { to: '/profile', label: 'My Profile', icon: UserCircle },
+    ],
+  },
 ];
 
 const pageTitles: Record<string, string> = {
@@ -67,6 +78,8 @@ const pageTitles: Record<string, string> = {
   '/compare': 'Method Comparison',
   '/columns': 'Column Database',
   '/templates': 'Method Templates',
+  '/admin': 'Admin Panel',
+  '/profile': 'My Profile',
 };
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -199,6 +212,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <kbd className="hidden items-center gap-1 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground sm:flex">
               <span>⌘K</span>
             </kbd>
+            <NotificationBell />
             <ThemeToggle />
           </div>
         </header>
@@ -206,6 +220,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         {/* Page content */}
         <main className="flex-1 overflow-x-hidden">{children}</main>
       </div>
+
+      <CommandPalette />
     </div>
   );
 }

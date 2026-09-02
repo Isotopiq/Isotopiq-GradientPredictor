@@ -1,10 +1,18 @@
 FROM python:3.11-slim
 
 # Install system deps for RDKit + XGBoost/LightGBM (libgomp1 for OpenMP)
+# libxrender1 + libxext6 + libexpat1 needed for RDKit 2D depiction (rdMolDraw2D)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     libfreetype6 \
     libpng16-16 \
+    libxrender1 \
+    libxext6 \
+    libexpat1 \
+    libx11-6 \
+    libxau6 \
+    libxdmcp6 \
+    libxcb1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

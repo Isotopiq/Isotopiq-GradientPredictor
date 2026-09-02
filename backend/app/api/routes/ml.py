@@ -1,7 +1,8 @@
-"""ML routes: train, list models, applicability check."""
+"""ML routes: train, list models, applicability check, analytics."""
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +12,7 @@ from app.core.ml.registry import (
     delete_artifact,
     get_artifact,
     list_artifacts,
+    load_model_from_artifact,
 )
 from app.schemas.ml import ModelArtifactOut, TrainRequest, TrainResponse
 from app.services import ml_service
@@ -193,4 +195,151 @@ async def model_stats(db: DBSession, current: CurrentUser) -> dict:
         "models_by_column": models_by_column,
         "best_by_column": best_by_column,
         "recent_models": recent_models,
+    }
+
+
+@router.get("/models/{artifact_id}/feature-importance")
+async def get_feature_importance(
+    artifact_id: uuid.UUID, db: DBSession, current: CurrentUser
+) -> dict[str, Any]:
+    """Get feature importances for a trained model."""
+    artifact = await get_artifact(db, artifact_id)
+    if artifact is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Model not found")
+    try:
+        model = load_model_from_artifact(artifact)
+        importances = model.feature_importances
+    except Exception as exc:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Failed to load model: {exc}") from exc
+
+    # Sort by importance descending
+    sorted_features = sorted(importances.items(), key=lambda x: x[1], reverse=True)
+    return {
+        "model_id": str(artifact.id),
+        "model_type": artifact.model_type,
+        "column_type": artifact.column_type,
+        "version": artifact.version,
+        "features": [{"name": k, "importance": v} for k, v in sorted_features],
+    }
+
+
+@router.get("/models/{artifact_id}/history")
+async def get_model_history(
+    artifact_id: uuid.UUID, db: DBSession, current: CurrentUser
+) -> dict[str, Any]:
+    """Get version history for a model (all versions with same column_type + method_signature)."""
+    from sqlalchemy import select
+    from app.models.model_artifact import ModelArtifact
+
+    artifact = await get_artifact(db, artifact_id)
+    if artifact is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Model not found")
+
+    stmt = (
+        select(ModelArtifact)
+        .where(
+            (ModelArtifact.column_type == artifact.column_type)
+            & (ModelArtifact.method_signature == artifact.method_signature)
+        )
+        .order_by(ModelArtifact.version)
+    )
+    result = await db.execute(stmt)
+    versions = []
+    for a in result.scalars().all():
+        metrics = a.train_metrics or {}
+        versions.append({
+            "id": str(a.id),
+            "version": a.version,
+            "model_type": a.model_type,
+            "n_samples": a.n_samples,
+            "r2": metrics.get("r2"),
+            "rmse": metrics.get("rmse"),
+            "residual_std": metrics.get("residual_std"),
+            "trained_at": a.trained_at.isoformat() if a.trained_at else None,
+        })
+
+    return {
+        "column_type": artifact.column_type,
+        "method_signature": artifact.method_signature,
+        "versions": versions,
+    }
+
+
+@router.get("/performance-trends")
+async def performance_trends(db: DBSession, current: CurrentUser) -> dict[str, Any]:
+    """Get aggregate performance trends over time."""
+    from sqlalchemy import select
+    from app.models.model_artifact import ModelArtifact
+
+    result = await db.execute(
+        select(ModelArtifact).order_by(ModelArtifact.trained_at)
+    )
+    trends: list[dict[str, Any]] = []
+    for a in result.scalars().all():
+        metrics = a.train_metrics or {}
+        trends.append({
+            "date": a.trained_at.isoformat() if a.trained_at else None,
+            "model_id": str(a.id),
+            "column_type": a.column_type,
+            "model_type": a.model_type,
+            "version": a.version,
+            "r2": metrics.get("r2"),
+            "rmse": metrics.get("rmse"),
+            "n_samples": a.n_samples,
+        })
+
+    return {"trends": trends}
+
+
+@router.get("/calibration")
+async def calibration_data(db: DBSession, current: CurrentUser) -> dict[str, Any]:
+    """Get predicted vs observed RT pairs for calibration plotting."""
+    from sqlalchemy import select
+    from app.models.run import Run
+    from app.models.prediction import Prediction
+    from app.models.compound import Compound
+    from app.models.method import Method
+
+    # Join predictions with runs (observed) on compound + method
+    stmt = (
+        select(Prediction, Run, Compound)
+        .join(Run, (Prediction.compound_id == Run.compound_id) & (Prediction.method_id == Run.method_id))
+        .join(Compound, Prediction.compound_id == Compound.id)
+    )
+    result = await db.execute(stmt)
+    points: list[dict[str, Any]] = []
+    for pred, run, compound in result.all():
+        points.append({
+            "compound_smiles": compound.smiles,
+            "compound_name": compound.name,
+            "predicted_rt_s": pred.predicted_rt_s,
+            "observed_rt_s": run.observed_rt_s,
+            "residual": pred.predicted_rt_s - run.observed_rt_s,
+            "model_version": pred.model_version,
+            "confidence": pred.confidence,
+        })
+
+    # Compute simple regression stats
+    import numpy as np
+    if len(points) >= 2:
+        observed = np.array([p["observed_rt_s"] for p in points])
+        predicted = np.array([p["predicted_rt_s"] for p in points])
+        slope, intercept = np.polyfit(observed, predicted, 1)
+        residuals = predicted - (slope * observed + intercept)
+        ss_res = float(np.sum(residuals**2))
+        ss_tot = float(np.sum((predicted - predicted.mean()) ** 2))
+        r2 = 1 - ss_res / max(ss_tot, 1e-8)
+        rmse = float(np.sqrt(np.mean((predicted - observed) ** 2)))
+    else:
+        slope, intercept, r2, rmse = 1.0, 0.0, 0.0, 0.0
+
+    return {
+        "points": points,
+        "n_points": len(points),
+        "regression": {
+            "slope": float(slope),
+            "intercept": float(intercept),
+            "r2": float(r2),
+            "rmse": rmse,
+        },
     }
