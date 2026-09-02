@@ -10,7 +10,7 @@ export const mlApi = {
       formData,
       {
         params: { column_type: columnType, model_type: modelType },
-        headers: { 'Content-Type': 'multipart/form-data' },
+        headers: { 'Content-Type': undefined },
       },
     );
     return data;

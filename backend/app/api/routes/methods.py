@@ -64,6 +64,7 @@ async def suggest_multi_method(data: MultiCompoundSuggestionRequest) -> MultiCom
         retention_goal=data.retention_goal,
         gradient_time_min=data.gradient_time_min,
         flow_rate_ml_min=data.flow_rate_ml_min,
+        column_type=data.column_type,
     )
     return MultiCompoundSuggestionOut.model_validate(result)
 

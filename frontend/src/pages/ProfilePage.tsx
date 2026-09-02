@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { authApi } from '@/api/auth';
 import { useAuth } from '@/context/AuthContext';
@@ -41,6 +41,14 @@ export function ProfilePage() {
   const [email, setEmail] = useState(user?.email || '');
   const [saving, setSaving] = useState(false);
 
+  // Sync local form state when user loads asynchronously (e.g. on page reload)
+  useEffect(() => {
+    if (user) {
+      setFullName(user.full_name || '');
+      setEmail(user.email || '');
+    }
+  }, [user]);
+
   // Crop state
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
@@ -55,8 +63,8 @@ export function ProfilePage() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Image too large (max 5MB before crop)');
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Image too large (max 10MB before crop)');
       return;
     }
     const reader = new FileReader();
@@ -69,14 +77,19 @@ export function ProfilePage() {
     setUploadingPic(true);
     try {
       const blob = await cropImage(imageSrc, croppedAreaPixels);
+      if (blob.size > 10 * 1024 * 1024) {
+        toast.error('Cropped image too large (max 10MB). Try a smaller crop or lower-resolution image.');
+        return;
+      }
       const file = new File([blob], 'profile.png', { type: 'image/png' });
       const updated = await authApi.uploadProfilePicture(file);
       setUser(updated);
       queryClient.invalidateQueries({ queryKey: ['user'] });
       toast.success('Profile picture updated');
       setImageSrc(null);
-    } catch {
-      toast.error('Failed to upload picture');
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(msg || 'Failed to upload picture');
     } finally {
       setUploadingPic(false);
     }
@@ -96,8 +109,8 @@ export function ProfilePage() {
     setSaving(true);
     try {
       const updated = await authApi.updateProfile({
-        full_name: fullName || undefined,
-        email: email !== user?.email ? email : undefined,
+        full_name: fullName.trim() || undefined,
+        email: email.trim() && email.trim() !== user?.email ? email.trim() : undefined,
       });
       setUser(updated);
       toast.success('Profile updated');

@@ -10,9 +10,11 @@ from app.api.routes import auth as auth_routes
 from app.api.routes import admin as admin_routes
 from app.api.routes import columns as column_routes
 from app.api.routes import compounds as compound_routes
+from app.api.routes import compound_lists as compound_list_routes
 from app.api.routes import export as export_routes
 from app.api.routes import health as health_routes
 from app.api.routes import methods as method_routes
+from app.api.routes import method_import as method_import_routes
 from app.api.routes import ml as ml_routes
 from app.api.routes import notifications as notification_routes
 from app.api.routes import predictions as prediction_routes
@@ -66,7 +68,9 @@ def create_app() -> FastAPI:
     app.include_router(health_routes.router, prefix=api_prefix)
     app.include_router(auth_routes.router, prefix=api_prefix)
     app.include_router(compound_routes.router, prefix=api_prefix)
+    app.include_router(compound_list_routes.router, prefix=api_prefix)
     app.include_router(method_routes.router, prefix=api_prefix)
+    app.include_router(method_import_routes.router, prefix=api_prefix)
     app.include_router(prediction_routes.router, prefix=api_prefix)
     app.include_router(run_routes.router, prefix=api_prefix)
     app.include_router(ml_routes.router, prefix=api_prefix)

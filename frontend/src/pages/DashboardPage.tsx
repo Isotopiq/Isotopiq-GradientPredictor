@@ -70,8 +70,7 @@ export function DashboardPage() {
   const { data: stats, isLoading } = useQuery<ModelStats>({
     queryKey: ['ml-stats'],
     queryFn: async () => {
-      const { data } = await mlApi.stats();
-      return data as ModelStats;
+      return await mlApi.stats() as ModelStats;
     },
   });
 

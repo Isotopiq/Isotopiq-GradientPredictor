@@ -51,6 +51,7 @@ def suggest(data: MethodSuggestionRequest) -> dict[str, Any]:
         retention_goal=data.retention_goal,
         gradient_time_min=data.gradient_time_min,
         flow_rate_ml_min=data.flow_rate_ml_min,
+        column_type_override=data.column_type,
     )
 
     return {
@@ -199,6 +200,7 @@ def suggest_multi(
     retention_goal: str = "neutral",
     gradient_time_min: float = 25.0,
     flow_rate_ml_min: float = 0.4,
+    column_type: str | None = None,
 ) -> dict[str, Any]:
     """Suggest a method that resolves a mixture of compounds.
 
@@ -228,6 +230,7 @@ def suggest_multi(
             retention_goal=retention_goal,
             gradient_time_min=gradient_time_min,
             flow_rate_ml_min=flow_rate_ml_min,
+            column_type_override=column_type,
         )
         per_compound.append(
             {

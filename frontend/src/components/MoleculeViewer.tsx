@@ -17,25 +17,30 @@ export function MoleculeViewer({
 }: MoleculeViewerProps) {
   const { rdkit, loading, error } = useRDKit();
   const [svg, setSvg] = useState<string | null>(null);
+  const [renderError, setRenderError] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!rdkit || !smiles) {
       setSvg(null);
+      setRenderError(false);
       return;
     }
     try {
       const mol = rdkit.get_mol(smiles);
       if (!mol.is_valid()) {
         setSvg(null);
+        setRenderError(true);
         mol.delete();
         return;
       }
       const svgStr = mol.get_svg(width, height);
       setSvg(svgStr);
+      setRenderError(false);
       mol.delete();
     } catch {
       setSvg(null);
+      setRenderError(true);
     }
   }, [rdkit, smiles, width, height]);
 
@@ -50,15 +55,22 @@ export function MoleculeViewer({
     );
   }
 
-  if (error || !svg) {
+  // If RDKit failed to load or the molecule couldn't be rendered,
+  // show a graceful fallback with the SMILES string instead of crashing.
+  if (error || renderError || !svg) {
     return (
       <div
-        className={cn('flex items-center justify-center rounded-md border border-dashed border-border', className)}
+        className={cn('flex flex-col items-center justify-center rounded-md border border-dashed border-border p-2', className)}
         style={{ width, height }}
       >
         <div className="text-center text-xs text-muted-foreground">
-          {error ? 'RDKit failed to load' : smiles ? 'Invalid SMILES' : 'No structure'}
+          {error ? 'RDKit unavailable' : smiles ? 'Cannot render structure' : 'No structure'}
         </div>
+        {smiles && (
+          <div className="mt-1 max-w-full overflow-hidden text-[10px] font-mono text-muted-foreground/70 break-all">
+            {smiles.length > 60 ? smiles.slice(0, 57) + '...' : smiles}
+          </div>
+        )}
       </div>
     );
   }

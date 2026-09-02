@@ -27,7 +27,9 @@ export function StructureInput({ onCompoundCreated, onSmilesChange }: StructureI
     { id: 'upload', label: 'Upload', icon: Upload },
   ];
 
-  const handleCreate = async () => {
+  const handleCreate = async (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
     setLoading(true);
     setError(null);
     try {
@@ -158,6 +160,7 @@ export function StructureInput({ onCompoundCreated, onSmilesChange }: StructureI
 
       {/* Submit */}
       <button
+        type="button"
         onClick={handleCreate}
         disabled={loading || (!smiles && !inchi && !molfile)}
         className="btn-primary w-full"

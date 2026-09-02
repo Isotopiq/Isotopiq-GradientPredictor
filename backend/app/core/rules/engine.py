@@ -33,8 +33,14 @@ def suggest_method(
     retention_goal: str = "neutral",
     gradient_time_min: float = 20.0,
     flow_rate_ml_min: float = 0.4,
+    column_type_override: str | None = None,
 ) -> MethodSuggestion:
-    """Produce a full rules-based method suggestion for a single compound."""
+    """Produce a full rules-based method suggestion for a single compound.
+
+    If *column_type_override* is provided, the rules engine will use that
+    column type instead of the heuristic recommendation, while still
+    computing all other parameters (pH, additive, gradient) normally.
+    """
     descriptors = compute_descriptors(mol)
     pka_sites = estimate_pka_sites(mol)
     pka_values = estimate_pka_values(mol)
@@ -46,13 +52,21 @@ def suggest_method(
     ph_suggestion = suggest_ph(pka_values, retention_goal=retention_goal)
     logd = logd_at_ph(mol, ph_suggestion.recommended_ph, descriptors.logp)
 
-    column = suggest_column(
-        logp=descriptors.logp,
-        logd=logd,
-        tpsa=descriptors.tpsa,
-        ionizable=ionizable,
-        max_pka_gap=max(pka_values) - min(pka_values) if pka_values else 0.0,
-    )
+    if column_type_override:
+        column = ColumnSuggestion(
+            column_type=column_type_override,
+            rationale=f"User-selected column: {column_type_override}. "
+            "Other parameters computed from molecular properties.",
+            alternatives=[],
+        )
+    else:
+        column = suggest_column(
+            logp=descriptors.logp,
+            logd=logd,
+            tpsa=descriptors.tpsa,
+            ionizable=ionizable,
+            max_pka_gap=max(pka_values) - min(pka_values) if pka_values else 0.0,
+        )
 
     additive = suggest_additive(
         ph=ph_suggestion.recommended_ph,

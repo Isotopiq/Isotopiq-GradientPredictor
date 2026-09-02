@@ -3,8 +3,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AppShell } from '@/components/AppShell';
 import { PredictorPage } from '@/pages/PredictorPage';
+import { CompoundsPage } from '@/pages/CompoundsPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { DataUploadPage } from '@/pages/DataUploadPage';
 import { ModelsPage } from '@/pages/ModelsPage';
@@ -51,6 +53,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <AppShell>
               <PredictorPage />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/compounds"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <CompoundsPage />
             </AppShell>
           </ProtectedRoute>
         }
@@ -152,15 +164,17 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <QueryClientProvider client={queryClient}>
-          <BrowserRouter>
-            <AppRoutes />
-          </BrowserRouter>
-          <Toaster position="bottom-right" richColors closeButton />
-        </QueryClientProvider>
-      </AuthProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AuthProvider>
+          <QueryClientProvider client={queryClient}>
+            <BrowserRouter>
+              <AppRoutes />
+            </BrowserRouter>
+            <Toaster position="bottom-right" richColors closeButton />
+          </QueryClientProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }

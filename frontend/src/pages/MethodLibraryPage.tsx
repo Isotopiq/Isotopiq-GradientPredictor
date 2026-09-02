@@ -254,8 +254,10 @@ export function MethodLibraryPage() {
                       </div>
                       <button
                         onClick={() => {
-                          navigator.clipboard.writeText(`${window.location.origin}/shared/${selected.share_token}`);
-                          toast.success('Link copied');
+                          navigator.clipboard
+                            .writeText(`${window.location.origin}/shared/${selected.share_token}`)
+                            .then(() => toast.success('Link copied'))
+                            .catch(() => toast.error('Could not copy link'));
                         }}
                         className="btn-outline btn-sm"
                       >

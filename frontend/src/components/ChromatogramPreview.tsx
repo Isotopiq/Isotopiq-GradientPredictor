@@ -64,8 +64,11 @@ export function ChromatogramPreview({ chromatogram, loading }: ChromatogramPrevi
             fontSize={11}
           />
           <Tooltip
-            formatter={(v: number) => [v.toFixed(3), 'Intensity']}
-            labelFormatter={(l: number) => `${l.toFixed(1)} min`}
+            formatter={(v) => {
+              const n = typeof v === 'number' ? v : NaN;
+              return [Number.isFinite(n) ? n.toFixed(3) : '—', 'Intensity'];
+            }}
+            labelFormatter={(l) => `${Number(l).toFixed(1)} min`}
             contentStyle={{
               backgroundColor: 'hsl(var(--card))',
               border: '1px solid hsl(var(--border))',

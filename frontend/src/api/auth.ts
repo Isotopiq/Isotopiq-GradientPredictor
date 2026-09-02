@@ -49,7 +49,7 @@ export const authApi = {
     const formData = new FormData();
     formData.append('file', file);
     const { data } = await apiClient.post<User>('/auth/profile/picture', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': undefined },
     });
     return data;
   },

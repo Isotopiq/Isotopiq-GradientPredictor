@@ -72,6 +72,28 @@ export interface CompoundCreate {
   source?: string;
 }
 
+export interface CompoundList {
+  id: string;
+  owner_id: string | null;
+  name: string;
+  description: string | null;
+  compound_ids: string[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CompoundListCreate {
+  name: string;
+  description?: string;
+  compound_ids: string[];
+}
+
+export interface CompoundListUpdate {
+  name?: string;
+  description?: string;
+  compound_ids?: string[];
+}
+
 export interface GradientPoint {
   time_s: number;
   percent_b: number;
@@ -167,6 +189,7 @@ export interface MethodSuggestionRequest {
   retention_goal?: string;
   gradient_time_min?: number;
   flow_rate_ml_min?: number;
+  column_type?: string;
 }
 
 export interface GradientSimulateRequest {
@@ -260,6 +283,19 @@ export interface TrainResponse {
 
 // --- New types for megaplan features ---
 
+export interface StationaryPhase {
+  carbon_load_pct: number;
+  ligand_length: number;
+  bonding_density_umol_m2: number;
+  surface_area_m2_g: number;
+  pore_size_a: number;
+  endcapped: boolean;
+  polar_embedded: boolean;
+  particle_type: string;
+  base_material: string;
+  hydrophobicity_index: number;
+}
+
 export interface ColumnSpec {
   id: string;
   brand: string;
@@ -273,6 +309,25 @@ export interface ColumnSpec {
   temperature_max_c: number;
   usp_code: string | null;
   notes: string;
+  stationary_phase?: StationaryPhase;
+}
+
+export interface PIRMPredictionResult {
+  predicted_rt_s: number;
+  rt_lower_s: number;
+  rt_upper_s: number;
+  confidence: number;
+  extrapolating: boolean;
+  model_version: string;
+  model_params: {
+    log_k0: number;
+    s: number;
+    t0_s: number;
+    v_void_ml: number;
+    k0_breakdown: Record<string, number>;
+    s_breakdown: Record<string, number>;
+  };
+  stationary_phase: StationaryPhase;
 }
 
 export interface MethodTemplate {
@@ -353,4 +408,42 @@ export interface Notification {
   last_trained_at: string | null;
   message: string;
   severity: 'info' | 'warning';
+}
+
+// --- Multi-compound method suggestion ---
+
+export interface MultiCompoundEntry {
+  index: number;
+  smiles: string;
+  name?: string;
+  error?: string;
+  column?: { column_type: string; rationale: string };
+  pka_values?: number[];
+  logp?: number;
+  logd?: number;
+  predicted_rt_s?: number;
+  peak_width_s?: number;
+}
+
+export interface ResolutionPair {
+  compound_a: number;
+  compound_b: number;
+  rt_a: number;
+  rt_b: number;
+  resolution: number;
+  co_elution_risk: boolean;
+}
+
+export interface MultiCompoundSuggestion {
+  per_compound: MultiCompoundEntry[];
+  gradient: {
+    gradient_table: GradientPoint[];
+    flow_rate_ml_min: number;
+    gradient_time_min: number;
+    percent_b_start: number;
+    percent_b_end: number;
+    column_length_mm: number;
+  };
+  resolution_matrix: ResolutionPair[];
+  co_elution_count: number;
 }

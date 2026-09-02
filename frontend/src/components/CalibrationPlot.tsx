@@ -57,8 +57,8 @@ export function CalibrationPlot({ data }: CalibrationPlotProps) {
           <p>Predicted vs observed retention time ({data.n_points} points)</p>
         </div>
         <div className="flex gap-2 text-xs">
-          <span className="badge badge-info">R² = {regression.r2.toFixed(3)}</span>
-          <span className="badge badge-warning">RMSE = {regression.rmse.toFixed(1)}s</span>
+          <span className="badge badge-info">R² = {Number.isFinite(regression.r2) ? regression.r2.toFixed(3) : '—'}</span>
+          <span className="badge badge-warning">RMSE = {Number.isFinite(regression.rmse) ? regression.rmse.toFixed(1) : '—'}s</span>
         </div>
       </div>
 
@@ -92,7 +92,10 @@ export function CalibrationPlot({ data }: CalibrationPlotProps) {
               borderRadius: '8px',
               fontSize: '12px',
             }}
-            formatter={(value: number, name: string) => [`${value.toFixed(1)}s`, name]}
+            formatter={(value, name) => {
+              const v: number = typeof value === 'number' ? value : Array.isArray(value) ? Number(value[0]) : NaN;
+              return [Number.isFinite(v) ? `${v.toFixed(1)}s` : '—', String(name)];
+            }}
           />
           <Legend wrapperStyle={{ fontSize: '11px' }} />
 

@@ -6,6 +6,7 @@ import { parseCompoundCsv, parseSdf } from '@/lib/sdfParser';
 import { MoleculeThumbnail } from '@/components/MoleculeViewer';
 import { EmptyState } from '@/components/EmptyState';
 import { toast } from 'sonner';
+import type { MultiCompoundSuggestion } from '@/types';
 
 interface ParsedCompound {
   name?: string;
@@ -13,16 +14,9 @@ interface ParsedCompound {
   molfile?: string;
 }
 
-interface SuggestionResult {
-  per_compound: Array<Record<string, unknown>>;
-  gradient: Record<string, unknown>;
-  resolution_matrix: Array<Record<string, unknown>>;
-  co_elution_count: number;
-}
-
 export function BatchAnalysisPage() {
   const [compounds, setCompounds] = useState<ParsedCompound[]>([]);
-  const [results, setResults] = useState<SuggestionResult | null>(null);
+  const [results, setResults] = useState<MultiCompoundSuggestion | null>(null);
   const [fileName, setFileName] = useState('');
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -44,7 +38,9 @@ export function BatchAnalysisPage() {
       } else {
         // CSV
         const csvCompounds = parseCompoundCsv(content);
-        parsed = csvCompounds.map((c) => ({ name: c.name, smiles: c.smiles }));
+        parsed = csvCompounds
+          .map((c) => ({ name: c.name, smiles: c.smiles }))
+          .filter((p) => p.smiles?.trim());
       }
 
       if (parsed.length === 0) {

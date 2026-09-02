@@ -91,7 +91,9 @@ export function ModelsPage() {
                       </td>
                       <td className="tabular-nums">v{m.version}</td>
                       <td className="tabular-nums">
-                        {(m.train_metrics as Record<string, number>)?.r2?.toFixed(3) ?? '—'}
+                        {Number.isFinite(Number((m.train_metrics as Record<string, unknown>)?.r2))
+                          ? Number((m.train_metrics as Record<string, unknown>)?.r2).toFixed(3)
+                          : '—'}
                       </td>
                       <td>
                         <ChevronRight size={14} className="text-muted-foreground" />
@@ -128,11 +130,15 @@ export function ModelsPage() {
                   <div className="grid grid-cols-3 gap-3 text-center">
                     <MetricBox
                       label="R²"
-                      value={(selectedModel.train_metrics as Record<string, number>)?.r2?.toFixed(3) ?? '—'}
+                      value={Number.isFinite(Number((selectedModel.train_metrics as Record<string, unknown>)?.r2))
+                        ? Number((selectedModel.train_metrics as Record<string, unknown>)?.r2).toFixed(3)
+                        : '—'}
                     />
                     <MetricBox
                       label="RMSE"
-                      value={(selectedModel.train_metrics as Record<string, number>)?.rmse?.toFixed(2) ?? '—'}
+                      value={Number.isFinite(Number((selectedModel.train_metrics as Record<string, unknown>)?.rmse))
+                        ? Number((selectedModel.train_metrics as Record<string, unknown>)?.rmse).toFixed(2)
+                        : '—'}
                     />
                     <MetricBox
                       label="Samples"

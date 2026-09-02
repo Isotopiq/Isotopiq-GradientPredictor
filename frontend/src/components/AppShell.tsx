@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
   FlaskConical,
+  Atom,
   BookMarked,
   Upload,
   BarChart3,
@@ -27,6 +28,7 @@ interface NavItem {
   to: string;
   label: string;
   icon: typeof LayoutDashboard;
+  adminOnly?: boolean;
 }
 
 interface NavSection {
@@ -40,6 +42,7 @@ const navSections: NavSection[] = [
     items: [
       { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { to: '/', label: 'Predictor', icon: FlaskConical },
+      { to: '/compounds', label: 'Compounds', icon: Atom },
       { to: '/methods', label: 'Method Library', icon: BookMarked },
     ],
   },
@@ -62,7 +65,7 @@ const navSections: NavSection[] = [
   {
     title: 'Administration',
     items: [
-      { to: '/admin', label: 'Admin Panel', icon: Settings },
+      { to: '/admin', label: 'Admin Panel', icon: Settings, adminOnly: true },
       { to: '/profile', label: 'My Profile', icon: UserCircle },
     ],
   },
@@ -71,6 +74,7 @@ const navSections: NavSection[] = [
 const pageTitles: Record<string, string> = {
   '/dashboard': 'Dashboard',
   '/': 'Predictor',
+  '/compounds': 'Compound Library',
   '/methods': 'Method Library',
   '/data': 'Data & Models',
   '/models': 'ML Models',
@@ -110,24 +114,24 @@ export function AppShell({ children }: { children: ReactNode }) {
         {/* Logo */}
         <div className="flex h-14 items-center justify-between border-b border-sidebar-muted px-3">
           {!collapsed && (
-            <a href="/dashboard" className="flex items-center">
+            <Link to="/dashboard" className="flex items-center">
               <img
                 src="/isotopiq-logo-white.png"
                 alt="IsotopiQ"
                 className="h-7 w-auto"
                 style={{ maxHeight: '28px' }}
               />
-            </a>
+            </Link>
           )}
           {collapsed && (
-            <a href="/dashboard" className="mx-auto">
+            <Link to="/dashboard" className="mx-auto">
               <img
                 src="/isotopiq-logo-white.png"
                 alt="IsotopiQ"
                 className="h-7 w-auto"
                 style={{ maxHeight: '28px', objectFit: 'contain' }}
               />
-            </a>
+            </Link>
           )}
           <button
             onClick={() => setCollapsed(!collapsed)}
@@ -139,7 +143,12 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         {/* Nav sections */}
         <nav className="flex-1 overflow-y-auto px-2 py-3">
-          {navSections.map((section) => (
+          {navSections.map((section) => {
+            const visibleItems = section.items.filter(
+              (item) => !item.adminOnly || user?.is_admin,
+            );
+            if (visibleItems.length === 0) return null;
+            return (
             <div key={section.title} className="mb-4">
               {!collapsed && (
                 <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-wider text-sidebar-muted-foreground">
@@ -147,7 +156,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </p>
               )}
               <div className="space-y-0.5">
-                {section.items.map((item) => (
+                {visibleItems.map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}
@@ -169,18 +178,29 @@ export function AppShell({ children }: { children: ReactNode }) {
                 ))}
               </div>
             </div>
-          ))}
+            );
+          })}
         </nav>
 
         {/* User info at bottom */}
         <div className="border-t border-sidebar-muted p-2">
           <div className={cn('flex items-center gap-2 rounded-md p-2', collapsed && 'justify-center')}>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-foreground">
-              {initials}
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent text-xs font-bold text-accent-foreground">
+              {user?.has_profile_picture ? (
+                <img
+                  src={`/api/v1/auth/profile/picture/${user.id}`}
+                  alt="Profile"
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                initials
+              )}
             </div>
             {!collapsed && (
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium">{user?.email}</p>
+                <p className="truncate text-xs font-medium">
+                  {user?.full_name || user?.email?.split('@')[0] || 'User'}
+                </p>
                 {user?.is_admin && (
                   <span className="badge badge-info mt-0.5 text-[10px]">Admin</span>
                 )}

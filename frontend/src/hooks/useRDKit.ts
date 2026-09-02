@@ -18,8 +18,30 @@ async function loadRDKit(): Promise<RDKitModule> {
   rdkitPromise = (async () => {
     // Dynamic import of @rdkit/rdkit — loads WASM module
     const mod = await import('@rdkit/rdkit');
-    const init = (mod as unknown as { init: () => Promise<RDKitModule> }).init;
-    const rdkit = await init();
+    // The package uses CommonJS (module.exports.default = initRDKitModule).
+    // Vite wraps this so the init function may be at mod.default, mod.init,
+    // or nested differently depending on the build. Handle all cases.
+    const modAny = mod as unknown as Record<string, unknown>;
+    const initFn: ((opts?: { locateFile?: (path: string) => string }) => Promise<RDKitModule>) | undefined =
+      typeof modAny.init === 'function'
+        ? modAny.init as typeof modAny.init & (() => Promise<RDKitModule>)
+        : typeof modAny.default === 'function'
+          ? modAny.default as typeof modAny.default & (() => Promise<RDKitModule>)
+          : typeof (modAny.default as Record<string, unknown> | undefined)?.init === 'function'
+            ? (modAny.default as Record<string, unknown>).init as (opts?: { locateFile?: (path: string) => string }) => Promise<RDKitModule>
+            : undefined;
+
+    if (!initFn) {
+      throw new Error('RDKit init function not found in module exports');
+    }
+
+    // The WASM file is copied to the public directory by the build.
+    // We need to tell RDKit where to find it, because Vite renames
+    // the JS bundle (e.g. RDKit_minimal-Dz-YEtpT.js) but the WASM
+    // file keeps its original name in the public dir.
+    const rdkit = await initFn({
+      locateFile: (path: string) => `/${path}`,
+    });
     return rdkit;
   })();
 

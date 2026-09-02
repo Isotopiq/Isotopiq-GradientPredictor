@@ -78,11 +78,14 @@ export function FeatureImportanceChart({ data }: FeatureImportanceChartProps) {
               borderRadius: '8px',
               fontSize: '12px',
             }}
-            formatter={(value: number) => [value.toFixed(4), 'Importance']}
+            formatter={(value) => {
+              const v = typeof value === 'number' ? value : NaN;
+              return [Number.isFinite(v) ? v.toFixed(4) : '—', 'Importance'];
+            }}
           />
           <Bar dataKey="importance" radius={[0, 4, 4, 0]}>
             {topFeatures.map((entry, idx) => (
-              <Cell key={idx} fill={categoryColors[entry.category]} />
+              <Cell key={idx} fill={categoryColors[entry.category] ?? 'hsl(var(--muted-foreground))'} />
             ))}
           </Bar>
         </BarChart>

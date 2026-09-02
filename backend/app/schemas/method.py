@@ -54,6 +54,7 @@ class MethodSuggestionRequest(BaseModel):
     retention_goal: str = "neutral"
     gradient_time_min: float = 20.0
     flow_rate_ml_min: float = 0.4
+    column_type: str | None = None  # override the heuristic column choice
 
 
 class ColumnSuggestionOut(BaseModel):
@@ -118,6 +119,7 @@ class MultiCompoundSuggestionRequest(BaseModel):
     retention_goal: str = "neutral"
     gradient_time_min: float = 25.0
     flow_rate_ml_min: float = 0.4
+    column_type: str | None = None  # override the heuristic column choice
 
 
 class MultiCompoundSuggestionOut(BaseModel):

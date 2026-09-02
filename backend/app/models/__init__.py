@@ -3,6 +3,7 @@ from app.models.base import Base, Timestamped, UUIDPK
 from app.models.app_settings import AppSettings
 from app.models.audit_log import AuditLog
 from app.models.compound import Compound
+from app.models.compound_list import CompoundList
 from app.models.method import Method
 from app.models.model_artifact import ModelArtifact
 from app.models.password_reset_token import PasswordResetToken
@@ -17,6 +18,7 @@ __all__ = [
     "AppSettings",
     "AuditLog",
     "Compound",
+    "CompoundList",
     "Method",
     "ModelArtifact",
     "PasswordResetToken",

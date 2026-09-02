@@ -34,7 +34,7 @@ export const adminApi = {
     const formData = new FormData();
     formData.append('file', file);
     const { data } = await apiClient.post<AppSettings>('/admin/logo', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': undefined },
     });
     return data;
   },

@@ -105,6 +105,7 @@ export function CompoundSearch({ onSelect, placeholder = 'Search compound by nam
           )}
           {results.map((r, i) => (
             <button
+              type="button"
               key={`${r.inchikey}-${i}`}
               onClick={() => handleSelect(r)}
               className={cn(

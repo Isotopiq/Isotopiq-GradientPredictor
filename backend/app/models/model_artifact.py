@@ -26,5 +26,5 @@ class ModelArtifact(Base, UUIDPK):
 
     train_metrics: Mapped[dict[str, Any] | None] = mapped_column(JSONBCompat, nullable=True)
     feature_schema: Mapped[dict[str, Any] | None] = mapped_column(JSONBCompat, nullable=True)
-    trained_at: Mapped[datetime] = mapped_column(nullable=False)
+    trained_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     n_samples: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

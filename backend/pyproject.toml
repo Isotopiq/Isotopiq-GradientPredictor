@@ -32,6 +32,9 @@ dependencies = [
     "numpy>=1.26",
     "pandas>=2.1",
     "aiosmtplib>=3.0",
+    "pyteomics>=4.7",
+    "lxml>=5.1",
+    "scipy>=1.12",
 ]
 
 [project.optional-dependencies]

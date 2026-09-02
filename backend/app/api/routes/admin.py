@@ -52,45 +52,6 @@ async def _get_or_create_settings(db: AsyncSession) -> AppSettings:
         await db.refresh(settings)
     return settings
 
-router = APIRouter(prefix="/admin", tags=["admin"])
-
-ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/svg+xml"}
-MAX_LOGO_SIZE = 2 * 1024 * 1024  # 2 MB
-
-
-class AppSettingsOut(BaseModel):
-    lab_name: str
-    lab_subtitle: str
-    lab_address: str | None = None
-    lab_website: str | None = None
-    has_logo: bool
-    logo_mime_type: str | None = None
-    report_footer: str
-
-
-class AppSettingsUpdate(BaseModel):
-    lab_name: str | None = None
-    lab_subtitle: str | None = None
-    lab_address: str | None = None
-    lab_website: str | None = None
-    report_footer: str | None = None
-
-
-async def _require_admin(user: User) -> None:
-    if not user.is_admin:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin access required")
-
-
-async def _get_or_create_settings(db: AsyncSession) -> AppSettings:
-    result = await db.execute(select(AppSettings).limit(1))
-    settings = result.scalar_one_or_none()
-    if settings is None:
-        settings = AppSettings.default()
-        db.add(settings)
-        await db.commit()
-        await db.refresh(settings)
-    return settings
-
 
 @router.get("/settings", response_model=AppSettingsOut)
 async def get_settings(db: DBSession, current: CurrentUser) -> AppSettingsOut:
@@ -217,9 +178,10 @@ async def list_users(
 ) -> list[AdminUserOut]:
     """List all users. Admin only."""
     await _require_admin(current)
-    stmt = select(User).order_by(User.created_at.desc()).limit(limit).offset(offset)
+    stmt = select(User).order_by(User.created_at.desc())
     if search:
         stmt = stmt.where(User.email.ilike(f"%{search}%"))
+    stmt = stmt.limit(limit).offset(offset)
     result = await db.execute(stmt)
     users = result.scalars().all()
     return [

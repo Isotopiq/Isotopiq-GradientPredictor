@@ -51,8 +51,11 @@ export function GradientChart({ gradientTable, predictedRtS }: GradientChartProp
             fontSize={11}
           />
           <Tooltip
-            formatter={(v: number) => [`${v.toFixed(1)}%`, '%B']}
-            labelFormatter={(l: number) => `${l.toFixed(1)} min`}
+            formatter={(v) => {
+              const n = typeof v === 'number' ? v : NaN;
+              return [Number.isFinite(n) ? `${n.toFixed(1)}%` : '—', '%B'];
+            }}
+            labelFormatter={(l) => `${Number(l).toFixed(1)} min`}
             contentStyle={{
               backgroundColor: 'hsl(var(--card))',
               border: '1px solid hsl(var(--border))',

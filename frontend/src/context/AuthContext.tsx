@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import type { User } from '@/types';
 import { authApi } from '@/api/auth';
 
@@ -48,15 +48,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // Try to restore session on mount
-  useState(() => {
+  useEffect(() => {
     const token = localStorage.getItem('access_token');
-    if (token) {
-      authApi.me().then(setUser).catch(() => {
+    if (!token) return;
+    let cancelled = false;
+    authApi.me()
+      .then((u) => { if (!cancelled) setUser(u); })
+      .catch(() => {
+        if (cancelled) return;
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
       });
-    }
-  });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Listen for auth:unauthorized events from the axios interceptor.
+  // When a 401 is received, clear the user state so ProtectedRoute
+  // can redirect to /login via React Router (no hard page reload).
+  useEffect(() => {
+    const handleUnauth = () => setUser(null);
+    window.addEventListener('auth:unauthorized', handleUnauth);
+    return () => window.removeEventListener('auth:unauthorized', handleUnauth);
+  }, []);
 
   return (
     <AuthContext.Provider value={{ user, loading, login, register, logout, setUser }}>

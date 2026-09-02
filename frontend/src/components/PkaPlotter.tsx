@@ -38,12 +38,19 @@ export function PkaPlotter({ smiles }: PkaPlotterProps) {
       />
     );
 
-  const hasSites = data.sites.length > 0;
-  const chartData = data.fractions.map((f) => ({
+  // Guard against malformed data that could crash Recharts
+  const hasSites = data.sites && data.sites.length > 0;
+  const chartData = (data.fractions || []).map((f) => ({
     ph: f.ph,
-    fraction_ionized: f.fraction_ionized * 100,
-    logd: f.logd,
+    fraction_ionized: (f.fraction_ionized || 0) * 100,
+    logd: f.logd ?? 0,
   }));
+  const pkaValues = (data.pka_values || []).filter(
+    (v) => typeof v === 'number' && isFinite(v),
+  );
+  const recommendedPh = typeof data.recommended_ph === 'number' && isFinite(data.recommended_ph)
+    ? data.recommended_ph
+    : null;
 
   return (
     <div className="card-scientific">
@@ -66,9 +73,11 @@ export function PkaPlotter({ smiles }: PkaPlotterProps) {
               pKa {site.pka.toFixed(1)} ({site.acid_base})
             </span>
           ))}
-          <span className="badge badge-success">
-            Recommended pH: {data.recommended_ph.toFixed(1)}
-          </span>
+          {recommendedPh !== null && (
+            <span className="badge badge-success">
+              Recommended pH: {recommendedPh.toFixed(1)}
+            </span>
+          )}
         </div>
       ) : (
         <p className="mb-3 text-sm text-muted-foreground">
@@ -109,11 +118,15 @@ export function PkaPlotter({ smiles }: PkaPlotterProps) {
               borderRadius: '8px',
               fontSize: '12px',
             }}
-            formatter={(value: number, name: string) => [
-              name === 'fraction_ionized' ? `${value.toFixed(1)}%` : value.toFixed(2),
-              name === 'fraction_ionized' ? '% Ionized' : 'logD',
-            ]}
-            labelFormatter={(label: number) => `pH ${label.toFixed(1)}`}
+            formatter={(value, name) => {
+              const v = typeof value === 'number' ? value : NaN;
+              const n = String(name);
+              return [
+                n === 'fraction_ionized' ? `${Number.isFinite(v) ? v.toFixed(1) : '—'}%` : Number.isFinite(v) ? v.toFixed(2) : '—',
+                n === 'fraction_ionized' ? '% Ionized' : 'logD',
+              ];
+            }}
+            labelFormatter={(label) => `pH ${Number(label).toFixed(1)}`}
           />
           <Legend wrapperStyle={{ fontSize: '11px' }} />
 
@@ -137,23 +150,25 @@ export function PkaPlotter({ smiles }: PkaPlotterProps) {
             name="logD"
           />
 
-          {data.pka_values.map((pka) => (
+          {pkaValues.map((pka, i) => (
             <ReferenceLine
-              key={pka}
-              xAxisId={0}
+              key={`pka-${i}-${pka}`}
+              yAxisId="left"
               x={pka}
               stroke="hsl(var(--warning))"
               strokeDasharray="4 4"
-              label={{ value: `pKa ${pka}`, fontSize: 10, fill: 'hsl(var(--warning))' }}
+              label={{ value: `pKa ${pka.toFixed(1)}`, fontSize: 10, fill: 'hsl(var(--warning))' }}
             />
           ))}
-          <ReferenceLine
-            xAxisId={0}
-            x={data.recommended_ph}
-            stroke="hsl(var(--success))"
-            strokeWidth={2}
-            label={{ value: 'Rec pH', fontSize: 10, fill: 'hsl(var(--success))' }}
-          />
+          {recommendedPh !== null && (
+            <ReferenceLine
+              yAxisId="left"
+              x={recommendedPh}
+              stroke="hsl(var(--success))"
+              strokeWidth={2}
+              label={{ value: 'Rec pH', fontSize: 10, fill: 'hsl(var(--success))' }}
+            />
+          )}
         </ComposedChart>
       </ResponsiveContainer>
 

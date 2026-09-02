@@ -9,6 +9,7 @@ import type {
   GradientSimulateResult,
   ChromatogramRequest,
   ChromatogramResult,
+  MultiCompoundSuggestion,
 } from '@/types';
 
 export const methodsApi = {
@@ -22,8 +23,9 @@ export const methodsApi = {
     retention_goal?: string;
     gradient_time_min?: number;
     flow_rate_ml_min?: number;
+    column_type?: string;
   }) => {
-    const { data: result } = await apiClient.post('/methods/suggest-multi', {
+    const { data: result } = await apiClient.post<MultiCompoundSuggestion>('/methods/suggest-multi', {
       smiles_list: smilesList,
       ...params,
     });

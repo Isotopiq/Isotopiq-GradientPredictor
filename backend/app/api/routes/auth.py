@@ -32,7 +32,7 @@ from app.services.email_service import send_password_reset_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-MAX_PROFILE_PIC_SIZE = 2 * 1024 * 1024
+MAX_PROFILE_PIC_SIZE = 10 * 1024 * 1024
 ALLOWED_PIC_TYPES = {"image/png", "image/jpeg", "image/webp"}
 
 
@@ -140,7 +140,7 @@ async def upload_profile_picture(
         )
     contents = await file.read()
     if len(contents) > MAX_PROFILE_PIC_SIZE:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Image too large (max 2 MB)")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Image too large (max 10 MB)")
     current.profile_picture_bytes = contents
     current.profile_picture_mime_type = file.content_type
     await db.commit()
