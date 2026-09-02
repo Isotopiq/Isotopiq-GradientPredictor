@@ -108,3 +108,89 @@ async def delete_model(artifact_id: uuid.UUID, db: DBSession, current: CurrentUs
     ok = await delete_artifact(db, artifact_id)
     if not ok:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Model not found")
+
+
+@router.get("/stats")
+async def model_stats(db: DBSession, current: CurrentUser) -> dict:
+    """Get aggregate model statistics for the dashboard."""
+    from sqlalchemy import func, select
+    from app.models.model_artifact import ModelArtifact
+    from app.models.compound import Compound
+    from app.models.method import Method
+    from app.models.run import Run
+    from app.models.prediction import Prediction
+
+    # Count models by type
+    model_count_result = await db.execute(
+        select(ModelArtifact.model_type, func.count(ModelArtifact.id))
+        .group_by(ModelArtifact.model_type)
+    )
+    models_by_type = {row[0]: row[1] for row in model_count_result.all()}
+
+    # Count models by column type
+    col_count_result = await db.execute(
+        select(ModelArtifact.column_type, func.count(ModelArtifact.id))
+        .group_by(ModelArtifact.column_type)
+    )
+    models_by_column = {row[0]: row[1] for row in col_count_result.all()}
+
+    # Total counts
+    total_models = await db.scalar(select(func.count(ModelArtifact.id)))
+    total_compounds = await db.scalar(select(func.count(Compound.id)))
+    total_methods = await db.scalar(select(func.count(Method.id)))
+    total_runs = await db.scalar(select(func.count(Run.id)))
+    total_predictions = await db.scalar(select(func.count(Prediction.id)))
+
+    # Average confidence across predictions
+    avg_confidence = await db.scalar(select(func.avg(Prediction.confidence)))
+
+    # Latest models with metrics
+    recent_result = await db.execute(
+        select(ModelArtifact).order_by(ModelArtifact.trained_at.desc()).limit(10)
+    )
+    recent_models = []
+    for a in recent_result.scalars().all():
+        metrics = a.train_metrics or {}
+        recent_models.append({
+            "id": str(a.id),
+            "column_type": a.column_type,
+            "model_type": a.model_type,
+            "version": a.version,
+            "n_samples": a.n_samples,
+            "r2": metrics.get("r2"),
+            "rmse": metrics.get("rmse"),
+            "residual_std": metrics.get("residual_std"),
+            "trained_at": a.trained_at.isoformat() if a.trained_at else None,
+        })
+
+    # Best performing model per column type
+    best_by_column: dict[str, dict] = {}
+    all_result = await db.execute(select(ModelArtifact))
+    for a in all_result.scalars().all():
+        metrics = a.train_metrics or {}
+        r2 = metrics.get("r2", 0)
+        if r2 is None:
+            r2 = 0
+        if a.column_type not in best_by_column or r2 > best_by_column[a.column_type].get("r2", 0):
+            best_by_column[a.column_type] = {
+                "model_type": a.model_type,
+                "version": a.version,
+                "r2": r2,
+                "rmse": metrics.get("rmse"),
+                "n_samples": a.n_samples,
+            }
+
+    return {
+        "totals": {
+            "models": total_models or 0,
+            "compounds": total_compounds or 0,
+            "methods": total_methods or 0,
+            "runs": total_runs or 0,
+            "predictions": total_predictions or 0,
+        },
+        "avg_confidence": float(avg_confidence) if avg_confidence else 0.0,
+        "models_by_type": models_by_type,
+        "models_by_column": models_by_column,
+        "best_by_column": best_by_column,
+        "recent_models": recent_models,
+    }

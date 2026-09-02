@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Search, Upload, Pencil, FileText } from 'lucide-react';
 import { compoundsApi } from '@/api/compounds';
+import { CompoundSearch } from '@/components/CompoundSearch';
 import type { Compound } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -12,19 +13,18 @@ interface StructureInputProps {
 }
 
 export function StructureInput({ onCompoundCreated, onSmilesChange }: StructureInputProps) {
-  const [tab, setTab] = useState<Tab>('paste');
+  const [tab, setTab] = useState<Tab>('search');
   const [smiles, setSmiles] = useState('');
   const [inchi, setInchi] = useState('');
   const [molfile, setMolfile] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const tabs: { id: Tab; label: string; icon: typeof Pencil }[] = [
+    { id: 'search', label: 'Search', icon: Search },
     { id: 'draw', label: 'Draw', icon: Pencil },
     { id: 'paste', label: 'Paste', icon: FileText },
     { id: 'upload', label: 'Upload', icon: Upload },
-    { id: 'search', label: 'Search', icon: Search },
   ];
 
   const handleCreate = async () => {
@@ -45,20 +45,10 @@ export function StructureInput({ onCompoundCreated, onSmilesChange }: StructureI
     }
   };
 
-  const handleSearch = async () => {
-    if (!searchTerm.trim()) return;
-    setLoading(true);
+  const handleSearchSelect = (result: { smiles: string; name?: string }) => {
+    setSmiles(result.smiles);
+    onSmilesChange(result.smiles);
     setError(null);
-    try {
-      const result = await compoundsApi.pubchemLookup({ name: searchTerm });
-      setSmiles(result.smiles);
-      onSmilesChange(result.smiles);
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(msg || 'Compound not found');
-    } finally {
-      setLoading(false);
-    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -90,6 +80,22 @@ export function StructureInput({ onCompoundCreated, onSmilesChange }: StructureI
       </div>
 
       {/* Tab content */}
+      {tab === 'search' && (
+        <div className="flex flex-col gap-2">
+          <label className="label">Search PubChem & ChemSpider</label>
+          <CompoundSearch onSelect={handleSearchSelect} />
+          {smiles && (
+            <div className="rounded-md border border-border bg-muted/50 p-2">
+              <p className="text-xs text-muted-foreground">Selected SMILES:</p>
+              <p className="mt-0.5 break-all font-mono text-xs">{smiles}</p>
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Real-time search across PubChem and ChemSpider databases.
+          </p>
+        </div>
+      )}
+
       {tab === 'draw' && (
         <div className="flex flex-col gap-2">
           <div className="flex h-[300px] items-center justify-center rounded-md border border-dashed border-border text-sm text-muted-foreground">
@@ -145,25 +151,6 @@ export function StructureInput({ onCompoundCreated, onSmilesChange }: StructureI
               File loaded ({molfile.length} chars)
             </p>
           )}
-        </div>
-      )}
-
-      {tab === 'search' && (
-        <div className="flex flex-col gap-2">
-          <label className="label">Search PubChem by name</label>
-          <div className="flex gap-2">
-            <input
-              className="input"
-              placeholder="e.g. caffeine"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            />
-            <button onClick={handleSearch} className="btn-primary shrink-0" disabled={loading}>
-              <Search size={14} />
-            </button>
-          </div>
-          <p className="text-xs text-muted-foreground">Looks up SMILES from PubChem REST API.</p>
         </div>
       )}
 

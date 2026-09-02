@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Upload, FileText } from 'lucide-react';
 import { mlApi } from '@/api/ml';
+import { InfoTooltip } from '@/components/InfoTooltip';
 
 interface DataUploadProps {
   onTrained: () => void;
@@ -43,10 +44,22 @@ export function DataUpload({ onTrained }: DataUploadProps) {
 
   return (
     <div className="card space-y-4">
-      <h3 className="text-sm font-semibold">Upload Training Data</h3>
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-semibold">Upload Training Data</h3>
+        <InfoTooltip
+          title="Training Data Upload"
+          content="Upload a CSV file with historical LC-MS runs to train a retention time prediction model. Each row should contain the compound SMILES, method conditions, and the observed retention time. The model learns to predict retention time for new compounds under similar conditions."
+        />
+      </div>
 
       <div>
-        <label className="label">CSV File</label>
+        <div className="flex items-center gap-1.5">
+          <label className="label">CSV File</label>
+          <InfoTooltip
+            title="CSV Format"
+            content="The CSV must have columns: smiles, column_type, ph, percent_b_start, percent_b_end, gradient_time_min, flow_ml_min, temperature_c, observed_rt_s. The observed_rt_s is the measured retention time in seconds — this is what the model learns to predict."
+          />
+        </div>
         <div className="mt-1 flex items-center gap-2">
           <label className="btn-outline cursor-pointer text-xs">
             <Upload size={14} />
@@ -68,31 +81,54 @@ export function DataUpload({ onTrained }: DataUploadProps) {
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="label">Column Type</label>
+          <div className="flex items-center gap-1.5">
+            <label className="label">Column Type</label>
+            <InfoTooltip
+              title="Column Type"
+              content="Select the HPLC column chemistry you're training for. Models are trained per column type — a C18 model won't work for HILIC. Choose the column that matches your training data. If your data contains multiple column types, filter the CSV to one type before uploading."
+            />
+          </div>
           <select
             className="input mt-1"
             value={columnType}
             onChange={(e) => setColumnType(e.target.value)}
           >
-            <option value="C18">C18</option>
-            <option value="phenyl">Phenyl</option>
-            <option value="HILIC">HILIC</option>
+            <option value="C18">C18 (reversed-phase)</option>
+            <option value="phenyl">Phenyl (reversed-phase)</option>
+            <option value="HILIC">HILIC (hydrophilic)</option>
             <option value="ion_pair">Ion Pair</option>
           </select>
         </div>
         <div>
-          <label className="label">Model Type</label>
+          <div className="flex items-center gap-1.5">
+            <label className="label">Model Type</label>
+            <InfoTooltip
+              title="Model Type Selection"
+              content="XGBoost: Best general-purpose choice. High accuracy, handles non-linear relationships well, good with mixed feature types. Recommended for most cases. LightGBM: Faster training, similar accuracy to XGBoost. Good for larger datasets (>1000 samples). Ensemble (XGB+LGBM): Averages both models. Most robust — reduces overfitting and gives better uncertainty estimates. Use when you want maximum reliability. sklearn GBM: Baseline model, simpler and more interpretable. Use for comparison or when XGBoost/LightGBM aren't available."
+            />
+          </div>
           <select
             className="input mt-1"
             value={modelType}
             onChange={(e) => setModelType(e.target.value)}
           >
-            <option value="xgboost">XGBoost</option>
-            <option value="lightgbm">LightGBM</option>
-            <option value="ensemble">Ensemble (XGB+LGBM)</option>
-            <option value="sklearn">sklearn GBM</option>
+            <option value="xgboost">XGBoost (recommended)</option>
+            <option value="lightgbm">LightGBM (faster)</option>
+            <option value="ensemble">Ensemble (most robust)</option>
+            <option value="sklearn">sklearn GBM (baseline)</option>
           </select>
         </div>
+      </div>
+
+      {/* Training tips */}
+      <div className="rounded-md border border-border bg-muted/30 p-3">
+        <p className="text-xs font-medium text-muted-foreground">When to use each model:</p>
+        <ul className="mt-1.5 space-y-1 text-xs text-muted-foreground">
+          <li>• <span className="font-medium">XGBoost</span> — default choice, best accuracy/speed balance</li>
+          <li>• <span className="font-medium">LightGBM</span> — large datasets (&gt;1000 rows), faster training</li>
+          <li>• <span className="font-medium">Ensemble</span> — maximum robustness, best uncertainty estimates</li>
+          <li>• <span className="font-medium">sklearn GBM</span> — interpretable baseline for comparison</li>
+        </ul>
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}

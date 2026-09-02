@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.chem.pubchem import PubChemError, lookup_by_cas, lookup_by_name
+from app.core.chem.chemspider import search_compounds_multi_source, ChemSpiderError
 from app.deps import CurrentUser, DBSession
 from app.schemas.compound import CompoundCreate, CompoundOut, PubChemLookupOut
 from app.services import compound_service
@@ -82,3 +83,16 @@ async def pubchem_lookup(
         formula=result["formula"],
         mw=result["mw"],
     )
+
+
+@router.get("/search/multi")
+async def search_compounds_multi(
+    name: str = Query(..., min_length=2),
+    limit: int = Query(10, ge=1, le=50),
+) -> list[dict[str, str]]:
+    """Search PubChem + ChemSpider by compound name. Returns a merged, deduplicated list."""
+    try:
+        results = await search_compounds_multi_source(name, limit)
+    except (PubChemError, ChemSpiderError) as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+    return results

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Save, Check } from 'lucide-react';
 import { StructureInput } from '@/components/StructureInput';
 import { PropertyPanel } from '@/components/PropertyPanel';
 import { MethodSuggestionCard } from '@/components/MethodSuggestionCard';
@@ -28,9 +29,12 @@ export function PredictorPage() {
   const [gradientTime, setGradientTime] = useState(20);
   const [ph, setPh] = useState(2.7);
   const [temperature, setTemperature] = useState(30);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   const handleCompoundCreated = async (c: Compound) => {
     setCompound(c);
+    setSaved(false);
     if (c.smiles) {
       await fetchSuggestion(c.smiles);
     }
@@ -53,6 +57,29 @@ export function PredictorPage() {
     }
   };
 
+  const handleSaveMethod = async () => {
+    if (!suggestion) return;
+    setSaving(true);
+    try {
+      await methodsApi.create({
+        column_type: suggestion.column.column_type,
+        ph,
+        mobile_phase_a: 'Water',
+        mobile_phase_b: 'ACN',
+        additive: suggestion.additive.additive,
+        flow_rate_ml_min: flowRate,
+        temperature_c: temperature,
+        gradient_table: gradientTable,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch {
+      // ignore
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const logp = suggestion?.descriptors.logp ?? compound?.logp ?? 2.0;
 
   return (
@@ -71,7 +98,7 @@ export function PredictorPage() {
           />
         </div>
 
-        {/* Center: method suggestion + charts */}
+        {/* Center: method suggestion + charts + save */}
         <div className="space-y-4">
           <MethodSuggestionCard suggestion={suggestion} loading={suggesting} />
           <GradientChart
@@ -79,6 +106,27 @@ export function PredictorPage() {
             predictedRtS={simResult?.predicted_rt_s}
           />
           <ChromatogramPreview chromatogram={chromatogram} loading={suggesting} />
+
+          {/* Save method button */}
+          {suggestion && (
+            <button
+              onClick={handleSaveMethod}
+              disabled={saving || saved}
+              className={`btn-primary w-full ${saved ? 'bg-success' : ''}`}
+            >
+              {saved ? (
+                <>
+                  <Check size={14} className="inline" /> Saved to Method Library
+                </>
+              ) : saving ? (
+                'Saving...'
+              ) : (
+                <>
+                  <Save size={14} className="inline" /> Save Method to Library
+                </>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Right: parameter sliders */}
