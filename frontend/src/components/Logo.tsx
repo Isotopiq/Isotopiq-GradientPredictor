@@ -1,29 +1,23 @@
-import logoDark from '@/assets/isotopiq-logo.png';
-import logoLight from '@/assets/isotopiq-logo-white.png';
 import { useTheme } from '@/context/ThemeContext';
 
 interface LogoProps {
   className?: string;
-  showText?: boolean;
+  variant?: 'auto' | 'light' | 'dark';
 }
 
-export function Logo({ className = '', showText = false }: LogoProps) {
-  const { theme } = useTheme();
-  const logo = theme === 'dark' ? logoLight : logoDark;
+export function Logo({ className = '', variant = 'auto' }: LogoProps) {
+  const { resolvedTheme } = useTheme();
+  const isDark = variant === 'dark' || (variant === 'auto' && resolvedTheme === 'dark');
+  const src = isDark ? '/isotopiq-logo-white.png' : '/isotopiq-logo.png';
 
   return (
-    <div className={`flex items-center gap-2 ${className}`}>
+    <div className={`flex items-center ${className}`}>
       <img
-        src={logo}
+        src={src}
         alt="IsotopiQ"
         className="h-8 w-auto object-contain"
-        style={{ maxHeight: '36px' }}
+        style={{ maxHeight: '32px' }}
       />
-      {showText && (
-        <span className="text-sm font-semibold text-muted-foreground">
-          LC-MS Suite
-        </span>
-      )}
     </div>
   );
 }
