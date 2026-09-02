@@ -22,7 +22,10 @@ RUN mkdir -p /app/models
 # Unique port: 18700 (avoids conflicts with common dev ports)
 EXPOSE 18700
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:18700/api/v1/health')" || exit 1
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "18700"]
+# Run migrations then start the server.
+# The compose file ensures db is healthy before backend starts.
+# A retry loop handles transient connection issues.
+CMD ["sh", "-c", "for i in 1 2 3 4 5; do alembic upgrade head && break || sleep 3; done && uvicorn app.main:app --host 0.0.0.0 --port 18700"]

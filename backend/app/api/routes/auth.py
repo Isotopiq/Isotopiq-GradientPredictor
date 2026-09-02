@@ -58,5 +58,5 @@ def _make_token_pair(user: User) -> TokenPair:
     return TokenPair(
         access_token=create_access_token(str(user.id)),
         refresh_token=create_refresh_token(str(user.id)),
-        user=UserOut(id=user.id, email=user.email, full_name=user.full_name),
+        user=UserOut(id=user.id, email=user.email, full_name=user.full_name, is_admin=user.is_admin),
     )

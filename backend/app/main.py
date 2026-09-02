@@ -19,7 +19,26 @@ from app.config import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: nothing heavy (DB ping is optional; migrations run separately)
+    # Startup: seed default admin (migrations already run in CMD/Dockerfile)
+    import logging
+
+    from app.database import engine as async_engine
+    from app.core.seed import seed_admin
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    logger = logging.getLogger("app.startup")
+    logging.basicConfig(level=logging.INFO)
+
+    # Seed admin user
+    print("[startup] Seeding admin user...", flush=True)
+    try:
+        async with AsyncSession(async_engine) as db:
+            await seed_admin(db)
+        print("[startup] Admin seed complete.", flush=True)
+    except Exception as exc:
+        print(f"[startup] Admin seed FAILED: {exc}", flush=True)
+        logger.warning("Admin seed skipped: %s", exc)
+
     yield
     # Shutdown
 

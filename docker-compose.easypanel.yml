@@ -1,3 +1,23 @@
+# Easypanel deployment
+# Usage in Easypanel:
+#   1. Create a new project in Easypanel
+#   2. Choose "Docker Compose" as the deployment method
+#   3. Paste this file content (or link this repo)
+#   4. Set the env vars in Easypanel's UI (or use the .env.example values)
+#   5. Deploy
+#
+# Easypanel automatically provisions a reverse proxy with SSL for each
+# published port. The domain is configured in the Easypanel UI.
+#
+# Required env vars (set in Easypanel > your app > Environment):
+#   POSTGRES_PASSWORD  — a strong password for the database
+#   JWT_SECRET         — a long random string for JWT signing
+#   ADMIN_EMAIL        — the admin login email
+#   ADMIN_PASSWORD     — the admin login password (CHANGE THIS!)
+#
+# After deploy, Easypanel assigns a domain (e.g. https://lcms.yourdomain.com).
+# The frontend nginx proxies /api/* to the backend internally.
+
 services:
   db:
     image: postgres:16-alpine
@@ -13,16 +33,14 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
-    # Unique host port 18732 -> container 5432 (for external DB tools like DBeaver/pgAdmin)
-    ports:
-      - "18732:5432"
+    # Easypanel: keep db internal-only (no ports published to host)
 
   backend:
     build: ./backend
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-lcms}:${POSTGRES_PASSWORD:-changeme}@db:5432/${POSTGRES_DB:-lcms}
       JWT_SECRET: ${JWT_SECRET:-change-this-to-a-long-random-string}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:18780,http://localhost:18717}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
       MODEL_STORAGE_PATH: /app/models
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme-admin-2024!}
@@ -35,10 +53,11 @@ services:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:18700/api/v1/health')"]
       interval: 30s
       timeout: 10s
-      start_period: 15s
-      retries: 3
+      start_period: 30s
+      retries: 5
     restart: unless-stopped
-    # Unique host port 18700 -> container 18700 (direct API + Swagger UI at /docs)
+    # Easypanel: expose backend on 18700 so Easypanel's proxy can route to it
+    # Configure the domain in Easypanel UI (e.g. api.yourdomain.com -> backend:18700)
     ports:
       - "18700:18700"
 
@@ -47,7 +66,8 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    # Unique host port 18780 -> container 18780 (SPA + nginx API proxy)
+    # Easypanel: this is the main entry point — configure the primary domain
+    # in Easypanel UI (e.g. lcms.yourdomain.com -> frontend:18780)
     ports:
       - "18780:18780"
     restart: unless-stopped

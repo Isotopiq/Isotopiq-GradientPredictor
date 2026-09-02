@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     model_storage_path: str = "./models"
     pubchem_base_url: str = "https://pubchem.ncbi.nlm.nih.gov/rest/pug"
 
+    # Default admin user (seeded on first startup)
+    admin_email: str = "admin@example.com"
+    admin_password: str = "changeme-admin-2024!"
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

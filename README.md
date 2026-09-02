@@ -13,9 +13,23 @@ Inspired by Chromsword Method Development Suite.
 
 ```bash
 cp .env.example .env
+# IMPORTANT: change ADMIN_PASSWORD and JWT_SECRET in .env before production!
 docker compose up --build
 # App: http://localhost:18780  |  API: http://localhost:18780/api/health
+# Swagger UI: http://localhost:18700/docs
+# PostgreSQL: localhost:18732 (for external DB tools)
 ```
+
+### Default admin login
+
+On first startup, a default admin user is automatically seeded:
+
+| Field    | Value                    |
+|----------|--------------------------|
+| Email    | `admin@example.com`      |
+| Password | `changeme-admin-2024!`   |
+
+**Change these immediately** by setting `ADMIN_EMAIL` and `ADMIN_PASSWORD` in your `.env` file (or Easypanel environment variables) before deploying to production.
 
 Tear down:
 ```bash
@@ -25,18 +39,36 @@ docker compose down -v
 ## Local development (hot reload, opt-in)
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.override.yml up --build
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 # Backend: http://localhost:18700  |  Frontend: http://localhost:18717
 ```
 
+## Easypanel deployment
+
+An Easypanel-ready compose file is included at `docker-compose.easypanel.yml`.
+
+1. In Easypanel, create a new project and choose **Docker Compose** as the source.
+2. Point to this repo or paste the contents of `docker-compose.easypanel.yml`.
+3. Set these environment variables in the Easypanel UI:
+   - `POSTGRES_PASSWORD` — strong password for the database
+   - `JWT_SECRET` — long random string for JWT signing
+   - `ADMIN_EMAIL` — admin login email
+   - `ADMIN_PASSWORD` — admin login password (change from default!)
+4. Configure domains in Easypanel:
+   - Primary domain (e.g. `lcms.yourdomain.com`) → `frontend:18780`
+   - Optional API domain (e.g. `api.yourdomain.com`) → `backend:18700`
+5. Deploy. Easypanel provisions SSL certificates automatically.
+
+The database stays internal to the compose network (not exposed to the host).
+
 ### Port assignments (chosen to avoid conflicts with common services)
 
-| Service        | Port  | Notes                          |
-|----------------|-------|--------------------------------|
-| Frontend (nginx) | 18780 | Production SPA + API proxy     |
-| Frontend (Vite)  | 18717 | Dev hot-reload                 |
-| Backend (FastAPI)| 18700 | REST API                       |
-| PostgreSQL       | 18732 | Only if explicitly exposed     |
+| Service        | Port  | Notes                                    |
+|----------------|-------|------------------------------------------|
+| Frontend (nginx) | 18780 | Production SPA + nginx API proxy         |
+| Frontend (Vite)  | 18717 | Dev hot-reload only                      |
+| Backend (FastAPI)| 18700 | REST API + Swagger UI at `/docs`         |
+| PostgreSQL       | 18732 | For external DB tools (DBeaver/pgAdmin)  |
 
 ## Testing (Docker, run-to-completion — no lingering containers)
 
