@@ -12,7 +12,7 @@ from app.core.chem.parser import ChemParseError, parse_mol
 from app.core.chem.pka import estimate_pka_values
 from app.core.chem.pubchem import PubChemError, lookup_by_cas, lookup_by_name
 from app.models.compound import Compound
-from app.schemas.compound import CompoundCreate
+from app.schemas.compound import CompoundCreate, CompoundUpdate
 
 
 class CompoundServiceError(ValueError):
@@ -124,6 +124,24 @@ async def delete_compound(db: AsyncSession, compound_id: uuid.UUID) -> bool:
     await db.delete(compound)
     await db.commit()
     return True
+
+
+async def update_compound(
+    db: AsyncSession, compound_id: uuid.UUID, data: CompoundUpdate
+) -> Compound | None:
+    """Partially update a compound's editable fields (name, cas, is_shared)."""
+    compound = await db.get(Compound, compound_id)
+    if compound is None:
+        return None
+    if data.name is not None:
+        compound.name = data.name.strip() or None
+    if data.cas is not None:
+        compound.cas = data.cas.strip() or None
+    if data.is_shared is not None:
+        compound.is_shared = data.is_shared
+    await db.commit()
+    await db.refresh(compound)
+    return compound
 
 
 def compute_descriptor_dict(compound: Compound) -> dict[str, Any]:

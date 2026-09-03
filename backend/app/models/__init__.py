@@ -10,6 +10,7 @@ from app.models.password_reset_token import PasswordResetToken
 from app.models.prediction import Prediction
 from app.models.run import Run
 from app.models.user import User
+from app.models.user_method_template import UserMethodTemplate
 
 __all__ = [
     "Base",
@@ -25,4 +26,5 @@ __all__ = [
     "Prediction",
     "Run",
     "User",
+    "UserMethodTemplate",
 ]

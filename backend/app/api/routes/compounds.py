@@ -15,7 +15,7 @@ from app.core.chem.parser import ChemParseError, parse_mol
 from app.core.chem.pka import estimate_pka_sites
 from app.core.chem.descriptors import compute_descriptors
 from app.deps import CurrentUser, DBSession
-from app.schemas.compound import CompoundBatchCreate, CompoundCreate, CompoundOut, PubChemLookupOut
+from app.schemas.compound import CompoundBatchCreate, CompoundCreate, CompoundOut, CompoundUpdate, PubChemLookupOut
 from app.services import compound_service
 
 router = APIRouter(prefix="/compounds", tags=["compounds"])
@@ -201,3 +201,22 @@ async def delete_compound(compound_id: uuid.UUID, db: DBSession, current: Curren
     if compound.owner_id != current.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed")
     await compound_service.delete_compound(db, compound_id)
+
+
+@router.patch("/{compound_id}", response_model=CompoundOut)
+async def update_compound(
+    compound_id: uuid.UUID,
+    data: CompoundUpdate,
+    db: DBSession,
+    current: CurrentUser,
+) -> CompoundOut:
+    """Update editable fields of a compound (name, cas, is_shared)."""
+    compound = await compound_service.get_compound(db, compound_id)
+    if compound is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Compound not found")
+    if compound.owner_id != current.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed")
+    updated = await compound_service.update_compound(db, compound_id, data)
+    if updated is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Compound not found")
+    return CompoundOut.model_validate(updated)

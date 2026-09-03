@@ -85,14 +85,87 @@ def predict_rt_lss(params: LSSParameters, run: CalibrationRun) -> float:
     return tR
 
 
-def heuristic_lss_params(logp: float, t0: float = 60.0) -> LSSParameters:
-    """Heuristic LSS parameters from logP (no calibration data).
+def heuristic_lss_params(
+    logp: float,
+    t0: float = 60.0,
+    mw: float = 200.0,
+    tpsa: float = 0.0,
+    hbd: int = 0,
+    hba: int = 0,
+    column_type: str = "C18",
+) -> LSSParameters:
+    """Heuristic LSS parameters from molecular descriptors (no calibration data).
 
-    S typically 4-10 for small molecules; log_k0 correlates loosely with logP.
+    LSS model: log k = log_k0 - S * phi
+    where phi = fraction of strong solvent (%B/100).
+
+    Parameters are estimated from multiple physicochemical descriptors:
+    - logP: primary driver of hydrophobic retention (higher → more retention)
+    - MW: larger molecules have higher S (solvent strength slope)
+    - TPSA: polar surface area reduces retention (HILIC exception)
+    - HBD/HBA: H-bonding reduces RP retention via water interaction
+
+    Column type modulates the model:
+    - C18: standard RP, strongest hydrophobic retention
+    - C8: less retentive RP (shorter chain → lower log_k0)
+    - C4: weak RP (short chain → much lower log_k0)
+    - phenyl: RP with π-π selectivity (aromatic compounds retained more)
+    - PFP: RP with dipole/π selectivity (polarizable compounds retained more)
+    - HILIC: opposite mechanism — polar compounds retained more
+    - ion_pair: charged compounds retained via ion pairing
     """
-    s = 4.0 + max(0.0, logp) * 0.8
-    log_k0 = 0.5 + max(0.0, logp) * 0.6
-    return LSSParameters(log_k0=log_k0, s=min(s, 15.0), t0=t0)
+    # S (solvent strength slope): typically 4-10 for small molecules.
+    # S increases with molecular size (larger molecules are more sensitive
+    # to changes in mobile phase composition).
+    s = 4.0 + (mw / 200.0) * 1.5 + max(0.0, logp) * 0.5
+    s = min(s, 15.0)
+
+    # log_k0 (retention at phi=0, i.e. 100% water):
+    # Base from logP, reduced by polarity (TPSA, H-bond donors/acceptors).
+    tpsa_penalty = (tpsa / 50.0) * 0.3
+    hbd_penalty = hbd * 0.15
+    hba_penalty = hba * 0.08
+
+    log_k0 = 0.5 + max(0.0, logp) * 0.6 - tpsa_penalty - hbd_penalty - hba_penalty
+
+    # --- Column-type-specific modulation ---
+    col = column_type.lower().strip()
+
+    if col == "hilic":
+        # HILIC: opposite retention — polar compounds retained MORE.
+        # Invert the polarity penalties into bonuses, and reduce logP contribution.
+        log_k0 = 0.3 + (tpsa / 50.0) * 0.4 + hbd * 0.2 + hba * 0.1 + max(0.0, logp) * 0.1
+        s = 3.0 + (mw / 200.0) * 1.0  # HILIC gradients are gentler
+    elif col in ("c4", "butyl"):
+        # Short-chain RP: much less retentive than C18
+        log_k0 *= 0.5
+        s *= 0.8
+    elif col in ("c8", "octyl"):
+        # Medium-chain RP: less retentive than C18
+        log_k0 *= 0.7
+        s *= 0.9
+    elif col in ("phenyl", "phenylhexyl"):
+        # Phenyl: π-π interactions increase retention of aromatic compounds.
+        # We approximate "aromaticity" via logP contribution (aromatic compounds
+        # tend to have higher logP). Add a bonus for moderate-to-high logP.
+        log_k0 += max(0.0, logp) * 0.15
+    elif col in ("pfp", "pentafluorophenyl"):
+        # PFP: dipole/π selectivity — retains polarizable and halogenated compounds.
+        # Add bonus for H-bond acceptors (dipole interaction) and moderate polarity.
+        log_k0 += hba * 0.12 + (tpsa / 100.0) * 0.2
+    elif col in ("ion_pair", "ionpair"):
+        # Ion-pairing: charged compounds (ionized at method pH) are retained.
+        # We approximate via HBD/HBA (ionizable groups tend to have these).
+        log_k0 += hbd * 0.3 + hba * 0.15
+        s += 1.0
+    elif col in ("c18", "ods", "octadecyl"):
+        # Standard C18 — base model, no modulation needed
+        pass
+
+    # Floor log_k0 so very polar compounds still have some retention
+    log_k0 = max(-1.0, log_k0)
+
+    return LSSParameters(log_k0=log_k0, s=s, t0=t0)
 
 
 def predict_rt_from_gradient(

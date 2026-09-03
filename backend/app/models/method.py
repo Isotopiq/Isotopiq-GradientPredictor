@@ -31,6 +31,9 @@ class Method(Base, UUIDPK, Timestamped):
     flow_rate_ml_min: Mapped[float | None] = mapped_column(nullable=True)
     temperature_c: Mapped[float | None] = mapped_column(nullable=True)
 
+    # SMILES strings of compounds used to generate this method (for re-simulation)
+    compounds_smiles: Mapped[list[str] | None] = mapped_column(JSONBCompat, nullable=True)
+
     # Hash of column+pH+modifier signature used to key ML models
     method_signature: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 

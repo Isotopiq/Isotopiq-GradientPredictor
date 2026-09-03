@@ -1,27 +1,40 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Upload, FileText, Download, FlaskConical, Beaker, Zap, ChevronDown, ChevronRight,
-  AlertCircle, CheckCircle2, Loader2, Settings2,
+  Upload, FileText, Beaker, Zap, ChevronDown, ChevronRight,
+  AlertCircle, CheckCircle2, Loader2, Settings2, X, Plus, Trash2,
+  Edit3, TrendingUp,
 } from 'lucide-react';
 import { DataUpload } from '@/components/DataUpload';
 import { CompoundPicker } from '@/components/CompoundPicker';
-import { GradientChart } from '@/components/GradientChart';
 import { mlApi } from '@/api/ml';
 import { methodImportApi } from '@/api/methodImport';
 import { compoundsApi } from '@/api/compounds';
 import { InfoTooltip } from '@/components/InfoTooltip';
 import { toast } from 'sonner';
 import type { Compound } from '@/types';
-
-// Types from methodImport API
-import type { ParsedMethod as ParsedMethodType, ExtractPeaksResponse as ExtractPeaksResponseType, TrainFromPeaksResponse as TrainFromPeaksResponseType } from '@/api/methodImport';
+import type {
+  ParsedMethod as ParsedMethodType,
+  ExtractPeaksResponse as ExtractPeaksResponseType,
+  TrainFromPeaksResponse as TrainFromPeaksResponseType,
+  ModelSummary,
+} from '@/api/methodImport';
 
 interface SelectedCompound {
   id: string;
   name: string | null;
   smiles: string | null;
+}
+
+// Editable method conditions — initialized from parsed .meth, user can override
+interface EditableConditions {
+  flow_rate_ml_min: string;
+  column_temp_c: string;
+  percent_b_start: string;
+  percent_b_end: string;
+  gradient_time_min: string;
+  ph: string;
 }
 
 export function DataUploadPage() {
@@ -50,7 +63,7 @@ export function DataUploadPage() {
 
 function MethodImportSection({ defaultColumn }: { defaultColumn: string }) {
   const [methFile, setMethFile] = useState<File | null>(null);
-  const [mzxmlFile, setMzxmlFile] = useState<File | null>(null);
+  const [mzxmlFiles, setMzxmlFiles] = useState<File[]>([]);
   const [selectedCompounds, setSelectedCompounds] = useState<SelectedCompound[]>([]);
   const [columnType, setColumnType] = useState(defaultColumn);
   const [modelType, setModelType] = useState('xgboost');
@@ -60,10 +73,30 @@ function MethodImportSection({ defaultColumn }: { defaultColumn: string }) {
 
   const [parsedMethod, setParsedMethod] = useState<ParsedMethodType | null>(null);
   const [parsingMeth, setParsingMeth] = useState(false);
+  const [editingConditions, setEditingConditions] = useState(false);
+  const [conditions, setConditions] = useState<EditableConditions>({
+    flow_rate_ml_min: '',
+    column_temp_c: '',
+    percent_b_start: '',
+    percent_b_end: '',
+    gradient_time_min: '',
+    ph: '',
+  });
+
   const [peakResults, setPeakResults] = useState<ExtractPeaksResponseType | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [training, setTraining] = useState(false);
   const [trainResult, setTrainResult] = useState<TrainFromPeaksResponseType | null>(null);
+
+  // Incremental training state
+  const [incrementalMode, setIncrementalMode] = useState(false);
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+
+  const { data: existingModels } = useQuery({
+    queryKey: ['method-import-models', columnType],
+    queryFn: () => methodImportApi.listModels(columnType),
+    enabled: incrementalMode,
+  });
 
   const handleMethFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -74,6 +107,15 @@ function MethodImportSection({ defaultColumn }: { defaultColumn: string }) {
     try {
       const result = await methodImportApi.parseMeth(f);
       setParsedMethod(result);
+      // Initialize editable conditions from parsed values
+      setConditions({
+        flow_rate_ml_min: result.flow_rate_ml_min?.toString() || '',
+        column_temp_c: result.column_temp_c?.toString() || '',
+        percent_b_start: result.percent_b_start?.toString() || '',
+        percent_b_end: result.percent_b_end?.toString() || '',
+        gradient_time_min: result.gradient_time_min?.toString() || '',
+        ph: '',
+      });
       toast.success(`Parsed method: ${result.method_name || 'Unknown'} — ${result.gradient_table.length} gradient steps`);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
@@ -83,13 +125,16 @@ function MethodImportSection({ defaultColumn }: { defaultColumn: string }) {
     }
   };
 
-  const handleMzxmlFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (f) {
-      setMzxmlFile(f);
-      setPeakResults(null);
-      setTrainResult(null);
-    }
+  const handleMzxmlFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setMzxmlFiles((prev) => [...prev, ...files]);
+    setPeakResults(null);
+    setTrainResult(null);
+  };
+
+  const handleRemoveMzxmlFile = (idx: number) => {
+    setMzxmlFiles((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const handlePickCompound = (c: Compound) => {
@@ -108,9 +153,20 @@ function MethodImportSection({ defaultColumn }: { defaultColumn: string }) {
     setSelectedCompounds((prev) => prev.filter((sc) => sc.id !== id));
   };
 
+  const buildOverrides = () => {
+    const overrides: Record<string, number | undefined> = {};
+    if (conditions.flow_rate_ml_min) overrides.override_flow = parseFloat(conditions.flow_rate_ml_min);
+    if (conditions.column_temp_c) overrides.override_temp = parseFloat(conditions.column_temp_c);
+    if (conditions.percent_b_start) overrides.override_percent_b_start = parseFloat(conditions.percent_b_start);
+    if (conditions.percent_b_end) overrides.override_percent_b_end = parseFloat(conditions.percent_b_end);
+    if (conditions.gradient_time_min) overrides.override_gradient_time = parseFloat(conditions.gradient_time_min);
+    if (conditions.ph) overrides.override_ph = parseFloat(conditions.ph);
+    return overrides;
+  };
+
   const handleExtractPeaks = async () => {
-    if (!mzxmlFile) {
-      toast.error('Select an mzXML file first');
+    if (mzxmlFiles.length === 0) {
+      toast.error('Select at least one mzXML file');
       return;
     }
     if (selectedCompounds.length === 0) {
@@ -122,7 +178,7 @@ function MethodImportSection({ defaultColumn }: { defaultColumn: string }) {
     setTrainResult(null);
     try {
       const result = await methodImportApi.extractPeaks(
-        mzxmlFile,
+        mzxmlFiles,
         selectedCompounds.map((sc) => sc.id),
         {
           methFile: methFile || undefined,
@@ -134,7 +190,7 @@ function MethodImportSection({ defaultColumn }: { defaultColumn: string }) {
       const detected = result.results.filter((r) => r.peaks.length > 0).length;
       const total = result.results.length;
       if (detected > 0) {
-        toast.success(`Peaks detected for ${detected}/${total} compounds`);
+        toast.success(`Peaks detected for ${detected}/${total} compounds across ${result.mzxml_summaries.length} file(s)`);
       } else {
         toast.warning(`No peaks detected for any of the ${total} compounds — try adjusting m/z tolerance or SNR`);
       }
@@ -147,12 +203,16 @@ function MethodImportSection({ defaultColumn }: { defaultColumn: string }) {
   };
 
   const handleTrain = async () => {
-    if (!mzxmlFile || selectedCompounds.length === 0) return;
+    if (mzxmlFiles.length === 0 || selectedCompounds.length === 0) return;
+    if (incrementalMode && !selectedModelId) {
+      toast.error('Select an existing model to improve');
+      return;
+    }
     setTraining(true);
     setTrainResult(null);
     try {
       const result = await methodImportApi.trainFromPeaks(
-        mzxmlFile,
+        mzxmlFiles,
         selectedCompounds.map((sc) => sc.id),
         {
           methFile: methFile || undefined,
@@ -160,10 +220,18 @@ function MethodImportSection({ defaultColumn }: { defaultColumn: string }) {
           model_type: modelType,
           mz_tolerance_ppm: mzTolerancePpm,
           min_snr: minSnr,
+          existing_artifact_id: incrementalMode ? selectedModelId || undefined : undefined,
+          ...buildOverrides(),
         },
       );
       setTrainResult(result);
-      toast.success(`Model trained: ${result.n_samples} samples from ${result.compounds_used.length} compounds`);
+      if (result.incremental) {
+        toast.success(
+          `Model improved: ${result.n_new_samples} new + ${result.existing_samples_loaded || 0} existing = ${result.n_samples} total samples`,
+        );
+      } else {
+        toast.success(`Model trained: ${result.n_samples} samples from ${result.compounds_used.length} compounds`);
+      }
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       toast.error(msg || 'Training failed');
@@ -179,7 +247,7 @@ function MethodImportSection({ defaultColumn }: { defaultColumn: string }) {
         <h3 className="text-sm font-semibold">Instrument Method + mzXML Import</h3>
         <InfoTooltip
           title="Automated Import"
-          content="Upload a Thermo Chromeleon .meth file to auto-import chromatography conditions (gradient, flow, temperature, solvents). Then upload the corresponding mzXML file and select compounds — the app will extract ion chromatograms, detect peaks, and generate training data automatically."
+          content="Upload a Thermo Chromeleon .meth file to auto-import chromatography conditions (gradient, flow, temperature, solvents). Then upload the corresponding mzXML file(s) and select compounds — the app will extract ion chromatograms, detect peaks, and generate training data automatically. All imported values are editable."
         />
       </div>
 
@@ -204,31 +272,88 @@ function MethodImportSection({ defaultColumn }: { defaultColumn: string }) {
           )}
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
-          Thermo Chromeleon .meth file — chromatography conditions are auto-imported.
+          Thermo Chromeleon .meth file — chromatography conditions are auto-imported and fully editable.
         </p>
       </div>
 
-      {/* Parsed method display */}
+      {/* Parsed method display with edit capability */}
       {parsedMethod && (
         <div className="rounded-md border border-border bg-muted/30 p-3">
-          <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-            <MethodField label="Flow Rate" value={parsedMethod.flow_rate_ml_min ? `${parsedMethod.flow_rate_ml_min} ml/min` : '—'} />
-            <MethodField label="Column Temp" value={parsedMethod.column_temp_c ? `${parsedMethod.column_temp_c}°C` : '—'} />
-            <MethodField label="Gradient Time" value={parsedMethod.gradient_time_min ? `${parsedMethod.gradient_time_min} min` : '—'} />
-            <MethodField label="Method End" value={parsedMethod.method_end_time_min ? `${parsedMethod.method_end_time_min} min` : '—'} />
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">Imported Conditions</span>
+            <button
+              onClick={() => setEditingConditions(!editingConditions)}
+              className="flex items-center gap-1 text-xs text-accent hover:underline"
+            >
+              <Edit3 size={10} />
+              {editingConditions ? 'Done editing' : 'Edit values'}
+            </button>
           </div>
-          {parsedMethod.solvent_a && (
-            <div className="mt-2 text-xs">
-              <span className="text-muted-foreground">Solvent A: </span>
-              <span className="font-medium">{parsedMethod.solvent_a}</span>
+
+          {editingConditions ? (
+            /* Editable conditions grid */
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <EditableField
+                label="Flow Rate (ml/min)"
+                value={conditions.flow_rate_ml_min}
+                onChange={(v) => setConditions((p) => ({ ...p, flow_rate_ml_min: v }))}
+                placeholder="0.260"
+              />
+              <EditableField
+                label="Column Temp (°C)"
+                value={conditions.column_temp_c}
+                onChange={(v) => setConditions((p) => ({ ...p, column_temp_c: v }))}
+                placeholder="50"
+              />
+              <EditableField
+                label="%B Start"
+                value={conditions.percent_b_start}
+                onChange={(v) => setConditions((p) => ({ ...p, percent_b_start: v }))}
+                placeholder="35"
+              />
+              <EditableField
+                label="%B End"
+                value={conditions.percent_b_end}
+                onChange={(v) => setConditions((p) => ({ ...p, percent_b_end: v }))}
+                placeholder="95"
+              />
+              <EditableField
+                label="Gradient Time (min)"
+                value={conditions.gradient_time_min}
+                onChange={(v) => setConditions((p) => ({ ...p, gradient_time_min: v }))}
+                placeholder="27"
+              />
+              <EditableField
+                label="pH"
+                value={conditions.ph}
+                onChange={(v) => setConditions((p) => ({ ...p, ph: v }))}
+                placeholder="2.7"
+              />
             </div>
+          ) : (
+            /* Read-only display */
+            <>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                <MethodField label="Flow Rate" value={parsedMethod.flow_rate_ml_min ? `${parsedMethod.flow_rate_ml_min} ml/min` : '—'} />
+                <MethodField label="Column Temp" value={parsedMethod.column_temp_c ? `${parsedMethod.column_temp_c}°C` : '—'} />
+                <MethodField label="Gradient Time" value={parsedMethod.gradient_time_min ? `${parsedMethod.gradient_time_min} min` : '—'} />
+                <MethodField label="Method End" value={parsedMethod.method_end_time_min ? `${parsedMethod.method_end_time_min} min` : '—'} />
+              </div>
+              {parsedMethod.solvent_a && (
+                <div className="mt-2 text-xs">
+                  <span className="text-muted-foreground">Solvent A: </span>
+                  <span className="font-medium">{parsedMethod.solvent_a}</span>
+                </div>
+              )}
+              {parsedMethod.solvent_b && (
+                <div className="mt-1 text-xs">
+                  <span className="text-muted-foreground">Solvent B: </span>
+                  <span className="font-medium">{parsedMethod.solvent_b}</span>
+                </div>
+              )}
+            </>
           )}
-          {parsedMethod.solvent_b && (
-            <div className="mt-1 text-xs">
-              <span className="text-muted-foreground">Solvent B: </span>
-              <span className="font-medium">{parsedMethod.solvent_b}</span>
-            </div>
-          )}
+
           {parsedMethod.gradient_table.length > 0 && (
             <div className="mt-3">
               <p className="text-xs font-medium text-muted-foreground">Gradient Table:</p>
@@ -265,25 +390,46 @@ function MethodImportSection({ defaultColumn }: { defaultColumn: string }) {
         </div>
       )}
 
-      {/* Step 2: Upload mzXML file */}
+      {/* Step 2: Upload mzXML files (multiple) */}
       <div>
         <label className="label flex items-center gap-1.5">
           <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent/10 text-[10px] font-bold text-accent">2</span>
-          mzXML Data File
+          mzXML Data File(s)
         </label>
         <div className="mt-1 flex items-center gap-2">
           <label className="btn-outline cursor-pointer text-xs">
             <Upload size={14} />
-            Choose mzXML file
-            <input type="file" accept=".mzxml,.mzXML" onChange={handleMzxmlFile} className="hidden" />
+            Add mzXML file(s)
+            <input
+              type="file"
+              accept=".mzxml,.mzXML"
+              multiple
+              onChange={handleMzxmlFiles}
+              className="hidden"
+            />
           </label>
-          {mzxmlFile && (
-            <span className="flex items-center gap-1 text-xs text-muted-foreground">
-              <FileText size={12} />
-              {mzxmlFile.name}
-            </span>
+          {mzxmlFiles.length > 0 && (
+            <span className="text-xs text-muted-foreground">{mzxmlFiles.length} file(s) selected</span>
           )}
         </div>
+        {mzxmlFiles.length > 0 && (
+          <div className="mt-2 space-y-1">
+            {mzxmlFiles.map((f, i) => (
+              <div key={i} className="flex items-center gap-2 rounded-md border border-border p-1.5">
+                <FileText size={12} className="shrink-0 text-accent" />
+                <span className="flex-1 truncate text-xs">{f.name}</span>
+                <span className="text-[10px] text-muted-foreground">{(f.size / 1024 / 1024).toFixed(1)} MB</span>
+                <button
+                  onClick={() => handleRemoveMzxmlFile(i)}
+                  className="rounded p-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                  title="Remove file"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Step 3: Select compounds */}
@@ -301,7 +447,7 @@ function MethodImportSection({ defaultColumn }: { defaultColumn: string }) {
           <div className="mt-2 space-y-1">
             {selectedCompounds.map((sc) => (
               <div key={sc.id} className="flex items-center gap-2 rounded-md border border-border p-1.5">
-                <FlaskConical size={12} className="shrink-0 text-accent" />
+                <Beaker size={12} className="shrink-0 text-accent" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-medium">{sc.name || 'Unnamed'}</p>
                   <p className="truncate font-mono text-[10px] text-muted-foreground">{sc.smiles || '—'}</p>
@@ -374,16 +520,58 @@ function MethodImportSection({ defaultColumn }: { defaultColumn: string }) {
         )}
       </div>
 
+      {/* Incremental training toggle */}
+      <div className="rounded-md border border-border bg-muted/20 p-3">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setIncrementalMode(!incrementalMode);
+              if (incrementalMode) setSelectedModelId(null);
+            }}
+            className="flex items-center gap-1.5 text-xs font-medium"
+          >
+            <TrendingUp size={14} className={incrementalMode ? 'text-accent' : 'text-muted-foreground'} />
+            Improve existing model
+          </button>
+          <InfoTooltip
+            title="Incremental Training"
+            content="Enable this to add new data to an existing model. The app will load the previous model's training data, merge it with the new peaks, and retrain. This improves the model over time as more data becomes available."
+          />
+        </div>
+        {incrementalMode && (
+          <div className="mt-2">
+            {existingModels && existingModels.length > 0 ? (
+              <select
+                className="input mt-1 text-xs"
+                value={selectedModelId || ''}
+                onChange={(e) => setSelectedModelId(e.target.value || null)}
+              >
+                <option value="">Select a model to improve...</option>
+                {existingModels.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.column_type} — {m.model_type} v{m.version} ({m.n_samples} samples, {new Date(m.trained_at).toLocaleDateString()})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {existingModels ? 'No existing models found for this column type.' : 'Loading models...'}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Extract peaks button */}
       <button
         onClick={handleExtractPeaks}
-        disabled={extracting || !mzxmlFile || selectedCompounds.length === 0}
+        disabled={extracting || mzxmlFiles.length === 0 || selectedCompounds.length === 0}
         className="btn-outline w-full"
       >
         {extracting ? (
           <><Loader2 size={14} className="animate-spin" /> Extracting Peaks...</>
         ) : (
-          <><Zap size={14} /> Extract Peaks from mzXML</>
+          <><Zap size={14} /> Extract Peaks from mzXML ({mzxmlFiles.length} file(s))</>
         )}
       </button>
 
@@ -391,13 +579,12 @@ function MethodImportSection({ defaultColumn }: { defaultColumn: string }) {
       {peakResults && (
         <div className="space-y-3">
           <div className="rounded-md border border-border bg-muted/30 p-3">
-            <p className="text-xs font-medium">
-              mzXML: {peakResults.mzxml_summary.num_scans} scans ({peakResults.mzxml_summary.num_ms1_scans} MS1)
-            </p>
-            <p className="text-xs text-muted-foreground">
-              RT range: {peakResults.mzxml_summary.rt_start_s?.toFixed(1)}s — {peakResults.mzxml_summary.rt_end_s?.toFixed(1)}s
-              {peakResults.mzxml_summary.polarity && ` | ${peakResults.mzxml_summary.polarity}`}
-            </p>
+            {peakResults.mzxml_summaries.map((s, i) => (
+              <p key={i} className="text-xs font-medium">
+                {s.filename}: {s.num_scans} scans ({s.num_ms1_scans} MS1)
+                {s.polarity && ` | ${s.polarity}`}
+              </p>
+            ))}
           </div>
 
           {peakResults.results.map((r, i) => (
@@ -442,11 +629,13 @@ function MethodImportSection({ defaultColumn }: { defaultColumn: string }) {
           {peakResults.results.some((r) => r.peaks.length > 0) && (
             <button
               onClick={handleTrain}
-              disabled={training}
+              disabled={training || (incrementalMode && !selectedModelId)}
               className="btn-primary w-full"
             >
               {training ? (
                 <><Loader2 size={14} className="animate-spin" /> Training Model...</>
+              ) : incrementalMode ? (
+                <><TrendingUp size={14} /> Improve Existing Model</>
               ) : (
                 <><Zap size={14} /> Train Model from Detected Peaks</>
               )}
@@ -459,7 +648,7 @@ function MethodImportSection({ defaultColumn }: { defaultColumn: string }) {
       {trainResult && (
         <div className="rounded-md border border-success/30 bg-success/10 p-3 text-xs">
           <p className="font-medium text-success">
-            Model trained: {trainResult.n_samples} samples
+            {trainResult.incremental ? 'Model improved' : 'Model trained'}: {trainResult.n_samples} samples
           </p>
           <div className="mt-2 space-y-0.5">
             <div className="flex justify-between">
@@ -474,6 +663,18 @@ function MethodImportSection({ defaultColumn }: { defaultColumn: string }) {
               <span className="text-muted-foreground">Model Type</span>
               <span>{trainResult.model_type}</span>
             </div>
+            {trainResult.incremental && (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">New samples</span>
+                  <span className="tabular-nums">{trainResult.n_new_samples}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Existing samples loaded</span>
+                  <span className="tabular-nums">{trainResult.existing_samples_loaded || 0}</span>
+                </div>
+              </>
+            )}
             {trainResult.compounds_used.length > 0 && (
               <div className="mt-1">
                 <span className="text-muted-foreground">Compounds with peaks: </span>
@@ -498,6 +699,31 @@ function MethodField({ label, value }: { label: string; value: string }) {
     <div>
       <span className="text-muted-foreground">{label}: </span>
       <span className="font-medium">{value}</span>
+    </div>
+  );
+}
+
+function EditableField({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div>
+      <label className="label text-[10px]">{label}</label>
+      <input
+        type="text"
+        className="input mt-0.5 text-xs"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
     </div>
   );
 }

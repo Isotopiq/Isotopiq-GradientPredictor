@@ -115,6 +115,7 @@ export interface Method {
   method_signature: string | null;
   is_shared: boolean;
   share_token: string | null;
+  compounds_smiles: string[] | null;
 }
 
 export interface MethodCreate {
@@ -128,6 +129,7 @@ export interface MethodCreate {
   gradient_table?: GradientPoint[];
   flow_rate_ml_min?: number;
   temperature_c?: number;
+  compounds_smiles?: string[];
 }
 
 export interface ColumnSuggestion {
@@ -197,6 +199,11 @@ export interface GradientSimulateRequest {
   flow_rate_ml_min?: number;
   column_void_volume_ml?: number;
   logp?: number;
+  mw?: number;
+  tpsa?: number;
+  hbd?: number;
+  hba?: number;
+  column_type?: string;
   calibration_runs?: Array<{
     gradient_time_s: number;
     phi_start: number;
@@ -349,6 +356,46 @@ export interface MethodTemplate {
   particle_size_um: number;
 }
 
+export interface UserMethodTemplate {
+  id: string;
+  owner_id: string | null;
+  name: string;
+  category: string;
+  description: string | null;
+  column_type: string;
+  mobile_phase_a: string | null;
+  mobile_phase_b: string | null;
+  additive: string | null;
+  ph: number | null;
+  percent_b_start: number;
+  percent_b_end: number;
+  gradient_time_min: number;
+  flow_rate_ml_min: number;
+  temperature_c: number;
+  column_length_mm: number;
+  particle_size_um: number;
+  is_shared: boolean;
+}
+
+export interface UserTemplateCreate {
+  name: string;
+  category?: string;
+  description?: string;
+  column_type: string;
+  mobile_phase_a?: string;
+  mobile_phase_b?: string;
+  additive?: string;
+  ph?: number;
+  percent_b_start?: number;
+  percent_b_end?: number;
+  gradient_time_min?: number;
+  flow_rate_ml_min?: number;
+  temperature_c?: number;
+  column_length_mm?: number;
+  particle_size_um?: number;
+  is_shared?: boolean;
+}
+
 export interface PkaPlotData {
   smiles: string;
   sites: Array<{ pka: number; acid_base: string; atom_idx: number }>;
@@ -421,6 +468,13 @@ export interface MultiCompoundEntry {
   pka_values?: number[];
   logp?: number;
   logd?: number;
+  mw?: number;
+  tpsa?: number;
+  hbd?: number;
+  hba?: number;
+  rotatable_bonds?: number;
+  aromatic_rings?: number;
+  num_rings?: number;
   predicted_rt_s?: number;
   peak_width_s?: number;
 }

@@ -155,12 +155,28 @@ def parse_meth_file(content: bytes) -> ParsedMethod:
         result.method_name = name_match.group(1)
 
     # Find method end time
+    # Primary: InstrumentMethodEnd property (may be empty in some files)
     end_match = re.search(r'Name="InstrumentMethodEnd"[^>]*Value="([^"]*)"', text)
-    if end_match:
+    if end_match and end_match.group(1).strip():
         try:
             result.method_end_time_min = float(end_match.group(1))
         except ValueError:
             pass
+
+    # Fallback: derive from the last TimeStepNode time value
+    if result.method_end_time_min is None:
+        openings = list(re.finditer(r'<Item type="TimeStepNode">', text))
+        if openings:
+            last_chunk = text[openings[-1].start():min(openings[-1].start() + 500, len(text))]
+            last_time_match = re.search(r'InternalValue value="([^"]*)"', last_chunk)
+            if last_time_match:
+                last_time = _parse_scientific(last_time_match.group(1))
+                if last_time is not None and last_time > 0:
+                    result.method_end_time_min = last_time
+                    result.warnings.append(
+                        "Method end time derived from last gradient step "
+                        f"({last_time:.1f} min) — InstrumentMethodEnd was empty"
+                    )
 
     # Find column temperature - look for TCC (Thermostatted Column Compartment)
     # The column temp is in a PropertyStepNode with SymbolPath containing "TCC.*CC.Temperature.Nominal"

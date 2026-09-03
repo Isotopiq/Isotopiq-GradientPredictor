@@ -28,6 +28,11 @@ export const compoundsApi = {
     await apiClient.delete(`/compounds/${id}`);
   },
 
+  update: async (id: string, data: { name?: string; cas?: string; is_shared?: boolean }) => {
+    const { data: result } = await apiClient.patch<Compound>(`/compounds/${id}`, data);
+    return result;
+  },
+
   pubchemLookup: async (params: { name?: string; cas?: string }) => {
     const { data } = await apiClient.get('/compounds/pubchem/lookup', { params });
     return data;

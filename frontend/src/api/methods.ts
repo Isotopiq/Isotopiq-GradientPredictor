@@ -5,6 +5,8 @@ import type {
   MethodSuggestion,
   MethodSuggestionRequest,
   MethodTemplate,
+  UserMethodTemplate,
+  UserTemplateCreate,
   GradientSimulateRequest,
   GradientSimulateResult,
   ChromatogramRequest,
@@ -26,6 +28,28 @@ export const methodsApi = {
     column_type?: string;
   }) => {
     const { data: result } = await apiClient.post<MultiCompoundSuggestion>('/methods/suggest-multi', {
+      smiles_list: smilesList,
+      ...params,
+    });
+    return result;
+  },
+
+  optimizeGradient: async (smilesList: string[], params?: {
+    flow_rate_ml_min?: number;
+    gradient_time_min?: number;
+    column_type?: string;
+    ph?: number;
+    temperature_c?: number;
+  }) => {
+    const { data: result } = await apiClient.post<MultiCompoundSuggestion & {
+      optimization?: {
+        percent_b_start: number;
+        percent_b_end: number;
+        gradient_time_min: number;
+        min_resolution: number;
+        configurations_tested: number;
+      };
+    }>('/methods/optimize-gradient', {
       smiles_list: smilesList,
       ...params,
     });
@@ -105,5 +129,25 @@ export const methodsApi = {
   fork: async (id: string) => {
     const { data } = await apiClient.post<Method>(`/methods/${id}/fork`);
     return data;
+  },
+
+  // User-created templates
+  listUserTemplates: async () => {
+    const { data } = await apiClient.get<UserMethodTemplate[]>('/methods/templates/user/list');
+    return data;
+  },
+
+  createUserTemplate: async (tmpl: UserTemplateCreate) => {
+    const { data } = await apiClient.post<UserMethodTemplate>('/methods/templates/user/create', tmpl);
+    return data;
+  },
+
+  updateUserTemplate: async (id: string, tmpl: Partial<UserTemplateCreate>) => {
+    const { data } = await apiClient.patch<UserMethodTemplate>(`/methods/templates/user/${id}`, tmpl);
+    return data;
+  },
+
+  deleteUserTemplate: async (id: string) => {
+    await apiClient.delete(`/methods/templates/user/${id}`);
   },
 };

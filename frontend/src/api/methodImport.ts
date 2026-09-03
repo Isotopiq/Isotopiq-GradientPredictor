@@ -23,6 +23,7 @@ export interface ParsedMethod {
 }
 
 export interface MzXmlSummary {
+  filename: string;
   num_scans: number;
   num_ms1_scans: number;
   num_ms2_scans: number;
@@ -49,7 +50,7 @@ export interface PeakDetectionResult {
 }
 
 export interface ExtractPeaksResponse {
-  mzxml_summary: MzXmlSummary;
+  mzxml_summaries: MzXmlSummary[];
   results: PeakDetectionResult[];
   method_conditions: ParsedMethod | null;
 }
@@ -57,10 +58,32 @@ export interface ExtractPeaksResponse {
 export interface TrainFromPeaksResponse {
   artifact_id: string;
   n_samples: number;
+  n_new_samples: number;
   column_type: string;
   model_type: string;
   compounds_used: string[];
   compounds_no_peaks: string[];
+  incremental: boolean;
+  existing_samples_loaded?: number;
+  existing_model_version?: number;
+}
+
+export interface ModelSummary {
+  id: string;
+  column_type: string;
+  model_type: string;
+  version: number;
+  n_samples: number;
+  trained_at: string;
+}
+
+export interface MethodConditionOverrides {
+  override_flow?: number;
+  override_temp?: number;
+  override_percent_b_start?: number;
+  override_percent_b_end?: number;
+  override_gradient_time?: number;
+  override_ph?: number;
 }
 
 export const methodImportApi = {
@@ -82,8 +105,15 @@ export const methodImportApi = {
     return data;
   },
 
+  listModels: async (columnType?: string) => {
+    const { data } = await apiClient.get<ModelSummary[]>('/method-import/models', {
+      params: columnType ? { column_type: columnType } : undefined,
+    });
+    return data;
+  },
+
   extractPeaks: async (
-    mzxmlFile: File,
+    mzxmlFiles: File[],
     compoundIds: string[],
     options?: {
       methFile?: File;
@@ -93,7 +123,9 @@ export const methodImportApi = {
     },
   ) => {
     const formData = new FormData();
-    formData.append('mzxml_file', mzxmlFile);
+    for (const f of mzxmlFiles) {
+      formData.append('mzxml_files', f);
+    }
     formData.append('compound_ids', compoundIds.join(','));
     if (options?.methFile) {
       formData.append('meth_file', options.methFile);
@@ -116,7 +148,7 @@ export const methodImportApi = {
   },
 
   trainFromPeaks: async (
-    mzxmlFile: File,
+    mzxmlFiles: File[],
     compoundIds: string[],
     options?: {
       methFile?: File;
@@ -124,10 +156,13 @@ export const methodImportApi = {
       model_type?: string;
       mz_tolerance_ppm?: number;
       min_snr?: number;
-    },
+      existing_artifact_id?: string;
+    } & MethodConditionOverrides,
   ) => {
     const formData = new FormData();
-    formData.append('mzxml_file', mzxmlFile);
+    for (const f of mzxmlFiles) {
+      formData.append('mzxml_files', f);
+    }
     formData.append('compound_ids', compoundIds.join(','));
     if (options?.methFile) {
       formData.append('meth_file', options.methFile);
@@ -139,6 +174,28 @@ export const methodImportApi = {
     }
     if (options?.min_snr) {
       formData.append('min_snr', String(options.min_snr));
+    }
+    if (options?.existing_artifact_id) {
+      formData.append('existing_artifact_id', options.existing_artifact_id);
+    }
+    // Method condition overrides
+    if (options?.override_flow != null) {
+      formData.append('override_flow', String(options.override_flow));
+    }
+    if (options?.override_temp != null) {
+      formData.append('override_temp', String(options.override_temp));
+    }
+    if (options?.override_percent_b_start != null) {
+      formData.append('override_percent_b_start', String(options.override_percent_b_start));
+    }
+    if (options?.override_percent_b_end != null) {
+      formData.append('override_percent_b_end', String(options.override_percent_b_end));
+    }
+    if (options?.override_gradient_time != null) {
+      formData.append('override_gradient_time', String(options.override_gradient_time));
+    }
+    if (options?.override_ph != null) {
+      formData.append('override_ph', String(options.override_ph));
     }
     const { data } = await apiClient.post<TrainFromPeaksResponse>(
       '/method-import/train-from-peaks',

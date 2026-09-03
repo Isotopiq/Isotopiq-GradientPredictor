@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Search, Upload, Pencil, FileText } from 'lucide-react';
 import { compoundsApi } from '@/api/compounds';
 import { CompoundSearch } from '@/components/CompoundSearch';
+import { KetcherEditor } from '@/components/KetcherEditor';
 import type { Compound } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -17,6 +18,7 @@ export function StructureInput({ onCompoundCreated, onSmilesChange }: StructureI
   const [smiles, setSmiles] = useState('');
   const [inchi, setInchi] = useState('');
   const [molfile, setMolfile] = useState('');
+  const [compoundName, setCompoundName] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,6 +39,7 @@ export function StructureInput({ onCompoundCreated, onSmilesChange }: StructureI
         smiles: smiles || undefined,
         inchi: inchi || undefined,
         molfile: molfile || undefined,
+        name: compoundName,
       });
       onCompoundCreated(compound);
     } catch (err: unknown) {
@@ -49,6 +52,7 @@ export function StructureInput({ onCompoundCreated, onSmilesChange }: StructureI
 
   const handleSearchSelect = (result: { smiles: string; name?: string }) => {
     setSmiles(result.smiles);
+    setCompoundName(result.name);
     onSmilesChange(result.smiles);
     setError(null);
   };
@@ -100,13 +104,22 @@ export function StructureInput({ onCompoundCreated, onSmilesChange }: StructureI
 
       {tab === 'draw' && (
         <div className="flex flex-col gap-2">
-          <div className="flex h-[300px] items-center justify-center rounded-md border border-dashed border-border text-sm text-muted-foreground">
-            <div className="text-center">
-              <Pencil className="mx-auto mb-2" size={24} />
-              <p>Ketcher molecule editor</p>
-              <p className="text-xs">(loads via iframe in production)</p>
-            </div>
+          <div className="overflow-hidden rounded-md border border-border">
+            <KetcherEditor
+              smiles={smiles || undefined}
+              onSmilesChange={(s) => {
+                setSmiles(s);
+                setCompoundName(undefined);
+                onSmilesChange(s);
+              }}
+            />
           </div>
+          {smiles && (
+            <div className="rounded-md border border-border bg-muted/50 p-2">
+              <p className="text-xs text-muted-foreground">Current SMILES:</p>
+              <p className="mt-0.5 break-all font-mono text-xs">{smiles}</p>
+            </div>
+          )}
           <p className="text-xs text-muted-foreground">
             Draw your molecule and the SMILES will be extracted automatically.
           </p>
@@ -123,6 +136,7 @@ export function StructureInput({ onCompoundCreated, onSmilesChange }: StructureI
               value={smiles}
               onChange={(e) => {
                 setSmiles(e.target.value);
+                setCompoundName(undefined);
                 onSmilesChange(e.target.value);
               }}
             />

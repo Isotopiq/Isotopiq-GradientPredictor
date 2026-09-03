@@ -68,6 +68,13 @@ class PubChemLookupOut(BaseModel):
     mw: str
 
 
+class CompoundUpdate(BaseModel):
+    """Partial update for a compound. All fields optional."""
+    name: str | None = None
+    cas: str | None = None
+    is_shared: bool | None = None
+
+
 class CompoundBatchCreate(BaseModel):
     """Batch create multiple compounds."""
     compounds: list[CompoundCreate] = Field(min_length=1, max_length=500)

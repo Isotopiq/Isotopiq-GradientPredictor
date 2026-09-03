@@ -12,6 +12,28 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Shim Node.js require() for browser — ketcher-standalone has baked-in require calls -->
+    <script>
+      window.__nodeShims = true;
+      var __moduleCache = {};
+      function __stubModule() { return { exports: {} }; }
+      window.require = function (name) {
+        if (__moduleCache[name]) return __moduleCache[name].exports;
+        var mod = { exports: {} };
+        __moduleCache[name] = mod;
+        // Return stub for Node.js built-ins and packages that don't exist in browser
+        if (name === 'util') {
+          mod.exports = { types: {}, inspect: function (o) { return String(o); }, isArray: Array.isArray };
+        } else if (name === 'raphael') {
+          mod.exports = {};
+        } else if (name === 'ajv/dist/runtime/ucs2length') {
+          mod.exports = function (str) { return str.length; };
+        } else {
+          mod.exports = {};
+        }
+        return mod.exports;
+      };
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

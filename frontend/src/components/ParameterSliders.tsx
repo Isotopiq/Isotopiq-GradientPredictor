@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { methodsApi } from '@/api/methods';
-import type { GradientPoint, GradientSimulateResult, ChromatogramResult } from '@/types';
+import type { GradientPoint, GradientSimulateResult } from '@/types';
 
 interface ParameterSlidersProps {
   gradientTable: GradientPoint[];
@@ -15,7 +15,6 @@ interface ParameterSlidersProps {
   onPhChange: (v: number) => void;
   onTemperatureChange: (v: number) => void;
   onSimulateResult: (result: GradientSimulateResult) => void;
-  onChromatogramResult: (result: ChromatogramResult) => void;
 }
 
 export function ParameterSliders({
@@ -31,7 +30,6 @@ export function ParameterSliders({
   onPhChange,
   onTemperatureChange,
   onSimulateResult,
-  onChromatogramResult,
 }: ParameterSlidersProps) {
   const [bStart, setBStart] = useState(5);
   const [bEnd, setBEnd] = useState(95);
@@ -51,7 +49,9 @@ export function ParameterSliders({
     [onGradientChange],
   );
 
-  // Debounced simulation
+  // Debounced simulation — gradient RT prediction only.
+  // Chromatogram generation is handled by the parent page so it can show
+  // per-compound XIC traces for all compounds in the method.
   useEffect(() => {
     const timer = setTimeout(async () => {
       if (gradientTable.length < 2) return;
@@ -62,18 +62,6 @@ export function ParameterSliders({
           logp,
         });
         onSimulateResult(simResult);
-
-        const chromResult = await methodsApi.simulateChromatogram({
-          peaks: [
-            {
-              rt_s: simResult.predicted_rt_s,
-              height: 1.0,
-              label: 'Predicted',
-            },
-          ],
-          total_time_s: gradientTable[gradientTable.length - 1]?.time_s || 1500,
-        });
-        onChromatogramResult(chromResult);
       } catch {
         // Silent fail for live updates
       }

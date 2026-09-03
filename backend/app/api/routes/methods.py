@@ -26,6 +26,11 @@ from app.schemas.method import (
     MethodSuggestionRequest,
     MultiCompoundSuggestionRequest,
     MultiCompoundSuggestionOut,
+    OptimizeGradientRequest,
+    OptimizeGradientOut,
+    UserTemplateCreate,
+    UserTemplateUpdate,
+    UserTemplateOut,
 )
 from app.services import method_service
 
@@ -67,6 +72,20 @@ async def suggest_multi_method(data: MultiCompoundSuggestionRequest) -> MultiCom
         column_type=data.column_type,
     )
     return MultiCompoundSuggestionOut.model_validate(result)
+
+
+@router.post("/optimize-gradient", response_model=OptimizeGradientOut)
+async def optimize_gradient(data: OptimizeGradientRequest) -> OptimizeGradientOut:
+    """Grid-search for the gradient parameters that maximize separation."""
+    result = method_service.optimize_gradient_separation(
+        smiles_list=data.smiles_list,
+        flow_rate_ml_min=data.flow_rate_ml_min,
+        gradient_time_min=data.gradient_time_min,
+        column_type=data.column_type,
+        ph=data.ph,
+        temperature_c=data.temperature_c,
+    )
+    return OptimizeGradientOut.model_validate(result)
 
 
 @router.post("", response_model=MethodOut, status_code=status.HTTP_201_CREATED)
@@ -111,29 +130,176 @@ async def apply_template(
     current: CurrentUser,
     name: str | None = Query(None),
 ) -> MethodOut:
-    """Create a method from a template."""
+    """Create a method from a template (built-in or user-created)."""
+    # First check built-in templates
     template = get_template(template_id)
-    if template is None:
+    if template is not None:
+        gradient_table = template_to_gradient_table(template)
+        data = MethodCreate(
+            name=name or template.name,
+            column_type=template.column_type,
+            column_dims={
+                "length_mm": template.column_length_mm,
+                "particle_size_um": template.particle_size_um,
+            },
+            mobile_phase_a=template.mobile_phase_a,
+            mobile_phase_b=template.mobile_phase_b,
+            additive=template.additive,
+            ph=template.ph,
+            gradient_table=gradient_table,
+            flow_rate_ml_min=template.flow_rate_ml_min,
+            temperature_c=template.temperature_c,
+        )
+        method = await method_service.create_method(db, current.id, data)
+        return MethodOut.model_validate(method)
+
+    # Check user-created templates
+    from sqlalchemy import select
+    from app.models.user_method_template import UserMethodTemplate
+    import uuid as uuid_mod
+
+    try:
+        tmpl_uuid = uuid_mod.UUID(template_id)
+    except ValueError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Template not found")
 
-    gradient_table = template_to_gradient_table(template)
+    stmt = select(UserMethodTemplate).where(UserMethodTemplate.id == tmpl_uuid)
+    result = await db.execute(stmt)
+    user_tmpl = result.scalar_one_or_none()
+    if user_tmpl is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Template not found")
+    if user_tmpl.owner_id != current.id and not user_tmpl.is_shared:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed")
+
+    # Build gradient table from template params
+    t_total = user_tmpl.gradient_time_min * 60
+    gradient_table = [
+        {"time_s": 0, "percent_b": user_tmpl.percent_b_start},
+        {"time_s": 60, "percent_b": user_tmpl.percent_b_start},
+        {"time_s": t_total - 120, "percent_b": user_tmpl.percent_b_end},
+        {"time_s": t_total, "percent_b": user_tmpl.percent_b_end},
+    ]
     data = MethodCreate(
-        name=name or template.name,
-        column_type=template.column_type,
+        name=name or user_tmpl.name,
+        column_type=user_tmpl.column_type,
         column_dims={
-            "length_mm": template.column_length_mm,
-            "particle_size_um": template.particle_size_um,
+            "length_mm": user_tmpl.column_length_mm,
+            "particle_size_um": user_tmpl.particle_size_um,
         },
-        mobile_phase_a=template.mobile_phase_a,
-        mobile_phase_b=template.mobile_phase_b,
-        additive=template.additive,
-        ph=template.ph,
+        mobile_phase_a=user_tmpl.mobile_phase_a,
+        mobile_phase_b=user_tmpl.mobile_phase_b,
+        additive=user_tmpl.additive,
+        ph=user_tmpl.ph,
         gradient_table=gradient_table,
-        flow_rate_ml_min=template.flow_rate_ml_min,
-        temperature_c=template.temperature_c,
+        flow_rate_ml_min=user_tmpl.flow_rate_ml_min,
+        temperature_c=user_tmpl.temperature_c,
     )
     method = await method_service.create_method(db, current.id, data)
     return MethodOut.model_validate(method)
+
+
+# --- User-Created Template CRUD ---
+
+
+@router.get("/templates/user/list", response_model=list[UserTemplateOut])
+async def list_user_templates(
+    db: DBSession,
+    current: CurrentUser,
+) -> list[UserTemplateOut]:
+    """List user-created templates (own + shared)."""
+    from sqlalchemy import select
+    from app.models.user_method_template import UserMethodTemplate
+
+    stmt = select(UserMethodTemplate).where(
+        (UserMethodTemplate.owner_id == current.id) | (UserMethodTemplate.is_shared == True)
+    ).order_by(UserMethodTemplate.created_at.desc())
+    result = await db.execute(stmt)
+    templates = result.scalars().all()
+    return [UserTemplateOut.model_validate(t) for t in templates]
+
+
+@router.post("/templates/user/create", response_model=UserTemplateOut, status_code=status.HTTP_201_CREATED)
+async def create_user_template(
+    data: UserTemplateCreate,
+    db: DBSession,
+    current: CurrentUser,
+) -> UserTemplateOut:
+    """Create a new user-defined method template."""
+    from app.models.user_method_template import UserMethodTemplate
+
+    template = UserMethodTemplate(
+        owner_id=current.id,
+        name=data.name,
+        category=data.category,
+        description=data.description,
+        column_type=data.column_type,
+        mobile_phase_a=data.mobile_phase_a,
+        mobile_phase_b=data.mobile_phase_b,
+        additive=data.additive,
+        ph=data.ph,
+        percent_b_start=data.percent_b_start,
+        percent_b_end=data.percent_b_end,
+        gradient_time_min=data.gradient_time_min,
+        flow_rate_ml_min=data.flow_rate_ml_min,
+        temperature_c=data.temperature_c,
+        column_length_mm=data.column_length_mm,
+        particle_size_um=data.particle_size_um,
+        is_shared=data.is_shared,
+    )
+    db.add(template)
+    await db.commit()
+    await db.refresh(template)
+    return UserTemplateOut.model_validate(template)
+
+
+@router.patch("/templates/user/{template_id}", response_model=UserTemplateOut)
+async def update_user_template(
+    template_id: uuid.UUID,
+    data: UserTemplateUpdate,
+    db: DBSession,
+    current: CurrentUser,
+) -> UserTemplateOut:
+    """Update an existing user-created template."""
+    from sqlalchemy import select
+    from app.models.user_method_template import UserMethodTemplate
+
+    stmt = select(UserMethodTemplate).where(UserMethodTemplate.id == template_id)
+    result = await db.execute(stmt)
+    template = result.scalar_one_or_none()
+    if template is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Template not found")
+    if template.owner_id != current.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed")
+
+    update_data = data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(template, key, value)
+
+    await db.commit()
+    await db.refresh(template)
+    return UserTemplateOut.model_validate(template)
+
+
+@router.delete("/templates/user/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user_template(
+    template_id: uuid.UUID,
+    db: DBSession,
+    current: CurrentUser,
+) -> None:
+    """Delete a user-created template."""
+    from sqlalchemy import select
+    from app.models.user_method_template import UserMethodTemplate
+
+    stmt = select(UserMethodTemplate).where(UserMethodTemplate.id == template_id)
+    result = await db.execute(stmt)
+    template = result.scalar_one_or_none()
+    if template is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Template not found")
+    if template.owner_id != current.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed")
+
+    await db.delete(template)
+    await db.commit()
 
 
 # --- Method Sharing (public route) ---
