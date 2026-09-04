@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { methodsApi } from '@/api/methods';
 import type { GradientPoint, GradientSimulateResult } from '@/types';
 
@@ -17,10 +17,6 @@ interface ParameterSlidersProps {
   onSimulateResult: (result: GradientSimulateResult) => void;
 }
 
-// Default re-equilibration time after the wash step returns to initial conditions
-const WASH_RETURN_TIME_S = 30;   // 0.5 min to drop from %B end to %B start
-const REEQUILIBRATION_TIME_S = 120; // 2 min hold at initial conditions
-
 export function ParameterSliders({
   gradientTable,
   logp,
@@ -37,11 +33,17 @@ export function ParameterSliders({
 }: ParameterSlidersProps) {
   const [bStart, setBStart] = useState(5);
   const [bEnd, setBEnd] = useState(95);
-  const [washStep, setWashStep] = useState(false);
+  const [washStep, setWashStep] = useState(true);
+  const [washTimeMin, setWashTimeMin] = useState(0.5);      // time to drop from %B end to %B start
+  const [reequilTimeMin, setReequilTimeMin] = useState(2.0); // hold at initial conditions
 
-  // Rebuild gradient table when key params change
+  // Track whether the current gradientTable change came from our own rebuild
+  // to avoid the sync effect fighting with manual slider changes.
+  const internalChange = useRef(false);
+
+  // Rebuild gradient table from all current parameters
   const rebuildGradient = useCallback(
-    (newBStart: number, newBEnd: number, newTimeMin: number, withWash: boolean) => {
+    (newBStart: number, newBEnd: number, newTimeMin: number, withWash: boolean, washMin: number, reequilMin: number) => {
       const tTotal = newTimeMin * 60;
       const table: GradientPoint[] = [
         { time_s: 0, percent_b: newBStart },
@@ -50,33 +52,55 @@ export function ParameterSliders({
         { time_s: tTotal, percent_b: newBEnd },
       ];
       if (withWash) {
-        // Wash step: return to initial %B, then re-equilibrate
-        table.push({ time_s: tTotal + WASH_RETURN_TIME_S, percent_b: newBStart });
-        table.push({ time_s: tTotal + WASH_RETURN_TIME_S + REEQUILIBRATION_TIME_S, percent_b: newBStart });
+        // Wash step: linear drop from %B end back to %B start
+        const washEndS = tTotal + washMin * 60;
+        table.push({ time_s: washEndS, percent_b: newBStart });
+        // Re-equilibration: hold at initial %B
+        const reequilEndS = washEndS + reequilMin * 60;
+        table.push({ time_s: reequilEndS, percent_b: newBStart });
       }
+      internalChange.current = true;
       onGradientChange(table);
     },
     [onGradientChange],
   );
 
-  // Sync bStart/bEnd/washStep when gradient table is set externally (e.g. from suggestion)
+  // Sync bStart/bEnd/washStep when gradient table is set externally (e.g. from suggestion or loaded method).
+  // Skips when the change came from our own rebuild to avoid feedback loops.
   useEffect(() => {
+    if (internalChange.current) {
+      internalChange.current = false;
+      return;
+    }
     if (gradientTable.length < 2) return;
     const first = gradientTable[0];
     const last = gradientTable[gradientTable.length - 1];
-    // Detect wash step: if the last point's %B matches the first point's %B
-    // and there are more than 4 points, it's a wash step
+    // Detect wash step: last point's %B matches first point's %B and there are >4 points
     const hasWash = gradientTable.length > 4 && Math.abs(last.percent_b - first.percent_b) < 0.1;
     setBStart(first.percent_b);
-    // %B end is the highest point (or the point before the wash return)
-    const endIdx = hasWash ? gradientTable.length - 3 : gradientTable.length - 1;
-    setBEnd(gradientTable[endIdx].percent_b);
-    setWashStep(hasWash);
+    if (hasWash) {
+      // Points: [start, start-hold, end, end-hold, wash-return, reequil-hold]
+      const endIdx = 3;
+      setBEnd(gradientTable[endIdx]?.percent_b ?? gradientTable[2]?.percent_b ?? 95);
+      const tTotal = gradientTable[3]?.time_s ?? gradientTable[2]?.time_s ?? 1200;
+      const washReturnS = gradientTable[4]?.time_s ?? tTotal;
+      const reequilEndS = gradientTable[5]?.time_s ?? washReturnS;
+      setWashTimeMin(Math.max(0.1, (washReturnS - tTotal) / 60));
+      setReequilTimeMin(Math.max(0.1, (reequilEndS - washReturnS) / 60));
+      setWashStep(true);
+    } else {
+      // Table has no wash step — since wash is on by default, rebuild with wash added
+      const newBEnd = gradientTable[gradientTable.length - 1].percent_b;
+      const tTotal = gradientTable[gradientTable.length - 1].time_s;
+      const newTimeMin = Math.max(5, tTotal / 60);
+      setBEnd(newBEnd);
+      setWashStep(true);
+      // Rebuild with wash enabled using the loaded gradient's parameters
+      rebuildGradient(first.percent_b, newBEnd, newTimeMin, true, washTimeMin, reequilTimeMin);
+    }
   }, [gradientTable]);
 
   // Debounced simulation — gradient RT prediction only.
-  // Chromatogram generation is handled by the parent page so it can show
-  // per-compound XIC traces for all compounds in the method.
   useEffect(() => {
     const timer = setTimeout(async () => {
       if (gradientTable.length < 2) return;
@@ -97,22 +121,32 @@ export function ParameterSliders({
 
   const handleBStart = (v: number) => {
     setBStart(v);
-    rebuildGradient(v, bEnd, gradientTimeMin, washStep);
+    rebuildGradient(v, bEnd, gradientTimeMin, washStep, washTimeMin, reequilTimeMin);
   };
 
   const handleBEnd = (v: number) => {
     setBEnd(v);
-    rebuildGradient(bStart, v, gradientTimeMin, washStep);
+    rebuildGradient(bStart, v, gradientTimeMin, washStep, washTimeMin, reequilTimeMin);
   };
 
   const handleGradientTime = (v: number) => {
     onGradientTimeChange(v);
-    rebuildGradient(bStart, bEnd, v, washStep);
+    rebuildGradient(bStart, bEnd, v, washStep, washTimeMin, reequilTimeMin);
   };
 
   const handleWashToggle = (enabled: boolean) => {
     setWashStep(enabled);
-    rebuildGradient(bStart, bEnd, gradientTimeMin, enabled);
+    rebuildGradient(bStart, bEnd, gradientTimeMin, enabled, washTimeMin, reequilTimeMin);
+  };
+
+  const handleWashTime = (v: number) => {
+    setWashTimeMin(v);
+    rebuildGradient(bStart, bEnd, gradientTimeMin, washStep, v, reequilTimeMin);
+  };
+
+  const handleReequilTime = (v: number) => {
+    setReequilTimeMin(v);
+    rebuildGradient(bStart, bEnd, gradientTimeMin, washStep, washTimeMin, v);
   };
 
   return (
@@ -173,14 +207,14 @@ export function ParameterSliders({
         onChange={onTemperatureChange}
       />
 
-      {/* Wash / re-equilibration step toggle */}
+      {/* Wash / re-equilibration step toggle + duration controls */}
       <div className="border-t border-border pt-3">
         <label className="flex items-center justify-between cursor-pointer">
           <div>
             <span className="text-xs font-medium">Wash & Re-equilibrate</span>
             <p className="text-[10px] text-muted-foreground">
               {washStep
-                ? `Returns to ${bStart}% B after gradient, holds ${(REEQUILIBRATION_TIME_S / 60).toFixed(1)} min`
+                ? `Returns to ${bStart}% B, re-equilibrates column`
                 : 'Drop back to initial %B and re-equilibrate column'}
             </p>
           </div>
@@ -196,6 +230,36 @@ export function ParameterSliders({
             />
           </button>
         </label>
+
+        {washStep && (
+          <div className="mt-3 space-y-3">
+            <SliderRow
+              label="Wash Duration"
+              value={washTimeMin}
+              min={0.1}
+              max={5}
+              step={0.1}
+              unit="min"
+              onChange={handleWashTime}
+            />
+            <SliderRow
+              label="Re-equilibration"
+              value={reequilTimeMin}
+              min={0.5}
+              max={10}
+              step={0.5}
+              unit="min"
+              onChange={handleReequilTime}
+            />
+            <div className="rounded-md bg-muted/40 p-2 text-[10px] text-muted-foreground">
+              <strong>Gradient program:</strong> {bStart}% B → {bEnd}% B over {gradientTimeMin} min →
+              wash to {bStart}% B over {washTimeMin.toFixed(1)} min →
+              hold {reequilTimeMin.toFixed(1)} min (re-equilibration)
+              <br />
+              <strong>Total run time:</strong> {(gradientTimeMin + washTimeMin + reequilTimeMin).toFixed(1)} min
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -223,7 +287,7 @@ function SliderRow({
       <div className="flex justify-between text-xs">
         <span className="text-muted-foreground">{label}</span>
         <span className="font-medium tabular-nums">
-          {value.toFixed(step < 1 ? 2 : 0)}
+          {value.toFixed(step < 1 ? (step <= 0.1 ? 1 : 2) : 0)}
           {unit ? ` ${unit}` : ''}
         </span>
       </div>
