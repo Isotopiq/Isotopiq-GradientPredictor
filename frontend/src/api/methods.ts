@@ -190,6 +190,11 @@ export const methodsApi = {
     return data;
   },
 
+  unshare: async (id: string) => {
+    const { data } = await apiClient.post<Method>(`/methods/${id}/unshare`);
+    return data;
+  },
+
   getShared: async (token: string) => {
     const { data } = await apiClient.get<Method>(`/methods/shared/${token}`);
     return data;

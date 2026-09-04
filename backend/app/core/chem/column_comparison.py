@@ -45,6 +45,120 @@ class TanakaParameters:
         }
 
 
+def estimate_tanaka_from_phase(
+    column_name: str,
+    column_type: str,
+    carbon_load_pct: float,
+    ligand_length: int,
+    bonding_density_umol_m2: float,
+    surface_area_m2_g: float,
+    pore_size_a: float,
+    endcapped: bool,
+    polar_embedded: bool,
+    particle_type: str = "fully_porous",
+    base_material: str = "silica",
+    hydrophobicity_index: float = 1.0,
+) -> TanakaParameters:
+    """Estimate Tanaka parameters from stationary phase properties.
+
+    Uses empirical relationships derived from published Tanaka characterization
+    studies (Tanaka et al., J. Chromatogr. A, 2004; Euerby & Petersson,
+    J. Chromatogr. A, 2003). These are estimates — actual Tanaka values require
+    experimental measurement with the standard probe set.
+    """
+    # k_pb (hydrophobicity): scales with carbon load × surface area × ligand hydrophobicity
+    # Typical C18: k_pb = 7-10, C8: 4-6, C4: 2-3, HILIC: <1
+    carbon_factor = carbon_load_pct / 18.0  # normalized to typical C18
+    sa_factor = surface_area_m2_g / 180.0   # normalized to typical silica
+    k_pb = hydrophobicity_index * carbon_factor * sa_factor * 8.0
+    k_pb = max(0.1, min(k_pb, 20.0))
+
+    # alpha_ch2 (methylene selectivity): primarily ligand length dependent
+    # C18: ~1.5-1.7, C8: ~1.3-1.4, C4: ~1.1-1.2, phenyl: ~1.2-1.3
+    if ligand_length >= 18:
+        alpha_ch2 = 1.55 + (bonding_density_umol_m2 - 3.0) * 0.03
+    elif ligand_length >= 8:
+        alpha_ch2 = 1.35 + (bonding_density_umol_m2 - 3.0) * 0.02
+    elif ligand_length >= 4:
+        alpha_ch2 = 1.15
+    elif ligand_length == 0:  # HILIC
+        alpha_ch2 = 0.3
+    else:
+        alpha_ch2 = 1.0 + ligand_length * 0.03
+    alpha_ch2 = max(0.1, min(alpha_ch2, 2.5))
+
+    # alpha_t_o (shape selectivity): higher for phenyl/PFP, C30; lower for C18
+    if column_type.lower() in ("phenyl", "pfp", "pentafluorophenyl"):
+        alpha_t_o = 2.5 + (1.0 if column_type.lower() == "pfp" else 0.0)
+    elif ligand_length >= 30:  # C30
+        alpha_t_o = 2.0
+    elif ligand_length >= 18:
+        alpha_t_o = 1.5 + (0.1 if not endcapped else 0.0)
+    elif ligand_length >= 8:
+        alpha_t_o = 1.3
+    elif ligand_length == 0:
+        alpha_t_o = 0.8
+    else:
+        alpha_t_o = 1.2
+    # Core-shell particles show slightly higher shape selectivity
+    if particle_type == "core_shell":
+        alpha_t_o *= 1.05
+    alpha_t_o = max(0.5, min(alpha_t_o, 4.0))
+
+    # alpha_c_p (hydrogen bonding / caffeine-phenol selectivity)
+    # Endcapping reduces H-bonding; polar embedded increases it
+    base_cp = 0.4
+    if polar_embedded:
+        base_cp += 0.2
+    if not endcapped:
+        base_cp += 0.15
+    if column_type.lower() in ("hilic", "amide", "nh2", "diol"):
+        base_cp = 1.2 + (0.3 if polar_embedded else 0.0)
+    if column_type.lower() in ("phenyl", "pfp", "pentafluorophenyl"):
+        base_cp += 0.15
+    alpha_c_p = base_cp
+    alpha_c_p = max(0.1, min(alpha_c_p, 2.0))
+
+    # alpha_b_a_76 (ion exchange at pH 7.6)
+    # Silanol activity: higher for non-endcapped, hybrid silica, low bonding density
+    base_ba76 = 0.05
+    if not endcapped:
+        base_ba76 += 0.15
+    if base_material in ("hybrid_silica", "hybrid"):
+        base_ba76 += 0.05
+    if bonding_density_umol_m2 < 2.5:
+        base_ba76 += 0.1
+    if polar_embedded:
+        base_ba76 += 0.1
+    if column_type.lower() in ("hilic", "amide", "nh2", "diol", "sax", "scx"):
+        base_ba76 = 0.4 + (0.2 if not endcapped else 0.0)
+    alpha_b_a_76 = base_ba76
+    alpha_b_a_76 = max(0.0, min(alpha_b_a_76, 1.0))
+
+    # alpha_b_a_27 (ion exchange at pH 2.7)
+    # Much lower than at 7.6 since silanols are protonated
+    base_ba27 = 0.0
+    if not endcapped:
+        base_ba27 += 0.05
+    if base_material in ("hybrid_silica", "hybrid"):
+        base_ba27 += 0.02
+    if column_type.lower() in ("hilic", "amide", "nh2", "diol", "sax", "scx"):
+        base_ba27 = 0.2 + (0.1 if not endcapped else 0.0)
+    alpha_b_a_27 = base_ba27
+    alpha_b_a_27 = max(0.0, min(alpha_b_a_27, 0.5))
+
+    return TanakaParameters(
+        k_pb=k_pb,
+        alpha_ch2=alpha_ch2,
+        alpha_t_o=alpha_t_o,
+        alpha_c_p=alpha_c_p,
+        alpha_b_a_76=alpha_b_a_76,
+        alpha_b_a_27=alpha_b_a_27,
+        column_name=column_name,
+        column_type=column_type,
+    )
+
+
 # Reference Tanaka parameters for common column types
 # Based on published Tanaka characterization data
 REFERENCE_COLUMNS: dict[str, TanakaParameters] = {

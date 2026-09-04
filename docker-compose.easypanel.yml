@@ -1,22 +1,38 @@
-# Easypanel deployment
+# Easypanel deployment — LC-MS Method Prediction Suite
+#
 # Usage in Easypanel:
 #   1. Create a new project in Easypanel
 #   2. Choose "Docker Compose" as the deployment method
-#   3. Paste this file content (or link this repo)
-#   4. Set the env vars in Easypanel's UI (or use the .env.example values)
+#   3. Upload this file or link this repository
+#   4. Set the required env vars in Easypanel's UI (see below)
 #   5. Deploy
 #
-# Easypanel automatically provisions a reverse proxy with SSL for each
-# published port. The domain is configured in the Easypanel UI.
+# After deploy, Easypanel automatically provisions a reverse proxy with SSL.
+# Configure domains in the Easypanel UI:
+#   - Primary domain (e.g. https://lcms.yourdomain.com) -> frontend service
+#   - Optional API domain (e.g. https://api.lcms.yourdomain.com) -> backend service
 #
-# Required env vars (set in Easypanel > your app > Environment):
+# Required env vars (set in Easypanel > your app > Environment Variables):
 #   POSTGRES_PASSWORD  — a strong password for the database
-#   JWT_SECRET         — a long random string for JWT signing
+#   JWT_SECRET         — a long random string for JWT signing (use: openssl rand -hex 32)
 #   ADMIN_EMAIL        — the admin login email
 #   ADMIN_PASSWORD     — the admin login password (CHANGE THIS!)
 #
-# After deploy, Easypanel assigns a domain (e.g. https://lcms.yourdomain.com).
-# The frontend nginx proxies /api/* to the backend internally.
+# Optional env vars (defaults shown):
+#   POSTGRES_USER=lcms
+#   POSTGRES_DB=lcms
+#   CORS_ORIGINS=*    (set to your domain in production, e.g. https://lcms.yourdomain.com)
+#
+# Port strategy:
+#   These ports are chosen in the 191xx range to avoid conflicts with:
+#     - Common Easypanel services (80, 443, 3000, 8080, 8443, 9000)
+#     - This project's dev ports (18700, 18717, 18732, 18780)
+#     - PostgreSQL default (5432)
+#     - Other common services (3306, 6379, 9090, 27017)
+#
+#   DB:      internal only (no host port published)
+#   Backend: 19100 (container-internal, Easypanel proxies to it)
+#   Frontend: 19180 (container-internal, Easypanel proxies to it)
 
 services:
   db:
@@ -33,7 +49,10 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
-    # Easypanel: keep db internal-only (no ports published to host)
+    # Database stays internal to the compose network — Easypanel does not
+    # expose it. No ports published to the host.
+    networks:
+      - lcms_internal
 
   backend:
     build: ./backend
@@ -44,34 +63,61 @@ services:
       MODEL_STORAGE_PATH: /app/models
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme-admin-2024!}
+      # Frontend URL for password reset links — set to your Easypanel domain
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:19180}
+      # Backend listens on 19100 (unique port to avoid Easypanel conflicts)
+      APP_PORT: "19100"
     volumes:
       - models_data:/app/models
     depends_on:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:18700/api/v1/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:19100/api/v1/health')"]
       interval: 30s
       timeout: 10s
       start_period: 30s
       retries: 5
     restart: unless-stopped
-    # Easypanel: expose backend on 18700 so Easypanel's proxy can route to it
-    # Configure the domain in Easypanel UI (e.g. api.yourdomain.com -> backend:18700)
-    ports:
-      - "18700:18700"
+    # Backend listens on 19100 internally. Easypanel's reverse proxy routes
+    # the API domain to this port. No host port binding needed in Easypanel,
+    # but we expose it for Easypanel's service discovery.
+    expose:
+      - "19100"
+    networks:
+      - lcms_internal
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        # Tell the Vite build that the API is at /api/v1 (proxied by nginx)
+        VITE_API_BASE_URL: /api/v1
+    environment:
+      # Frontend nginx listens on 19180 (unique port to avoid Easypanel conflicts)
+      NGINX_PORT: "19180"
+      # Backend port for nginx proxy_pass (must match backend's APP_PORT)
+      BACKEND_PORT: "19100"
     depends_on:
       backend:
         condition: service_healthy
-    # Easypanel: this is the main entry point — configure the primary domain
-    # in Easypanel UI (e.g. lcms.yourdomain.com -> frontend:18780)
-    ports:
-      - "18780:18780"
+    # Frontend nginx listens on 19180 internally. Easypanel's reverse proxy
+    # routes the primary domain to this port.
+    expose:
+      - "19180"
     restart: unless-stopped
+    networks:
+      - lcms_internal
+
+networks:
+  # Internal network for service-to-service communication.
+  # Easypanel creates its own external network for the reverse proxy;
+  # this internal network keeps DB traffic isolated.
+  lcms_internal:
+    driver: bridge
 
 volumes:
   db_data:
+    # Persistent database storage — survives container rebuilds
   models_data:
+    # Trained ML model artifacts — survives container rebuilds

@@ -61,6 +61,11 @@ export const columnsApi = {
     return data;
   },
 
+  getTanakaForColumn: async (columnId: string) => {
+    const { data } = await apiClient.get<TanakaParameters>(`/columns/tanaka/column/${columnId}`);
+    return data;
+  },
+
   compareColumns: async (a: TanakaParameters, b: TanakaParameters) => {
     const { data } = await apiClient.post<ColumnComparisonResult>('/columns/tanaka/compare', {
       column_a: a, column_b: b,

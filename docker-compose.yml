@@ -26,6 +26,7 @@ services:
       MODEL_STORAGE_PATH: /app/models
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme-admin-2024!}
+      APP_PORT: "18700"
     volumes:
       - models_data:/app/models
     depends_on:
@@ -44,6 +45,9 @@ services:
 
   frontend:
     build: ./frontend
+    environment:
+      NGINX_PORT: "18780"
+      BACKEND_PORT: "18700"
     depends_on:
       backend:
         condition: service_healthy

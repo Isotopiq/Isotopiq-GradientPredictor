@@ -818,6 +818,24 @@ async def share_method(
     return MethodOut.model_validate(method)
 
 
+@router.post("/{method_id}/unshare", response_model=MethodOut)
+async def unshare_method(
+    method_id: uuid.UUID, db: DBSession, current: CurrentUser
+) -> MethodOut:
+    """Revoke sharing for a method (disables the share link)."""
+    method = await method_service.get_method(db, method_id)
+    if method is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Method not found")
+    if method.owner_id != current.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed")
+
+    method.is_shared = False
+    method.share_token = None
+    await db.commit()
+    await db.refresh(method)
+    return MethodOut.model_validate(method)
+
+
 @router.post("/{method_id}/fork", response_model=MethodOut, status_code=status.HTTP_201_CREATED)
 async def fork_method(
     method_id: uuid.UUID, db: DBSession, current: CurrentUser

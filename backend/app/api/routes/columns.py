@@ -72,6 +72,48 @@ async def list_tanaka_reference() -> dict:
     }
 
 
+@router.get("/tanaka/column/{column_id}")
+async def get_tanaka_for_column(column_id: str) -> dict:
+    """Get estimated Tanaka parameters for a commercial column from the database."""
+    col = get_column(column_id)
+    if col is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Column '{column_id}' not found")
+    from app.core.chem.column_comparison import estimate_tanaka_from_phase
+    if col.phase is not None:
+        params = estimate_tanaka_from_phase(
+            column_name=f"{col.brand} {col.name}",
+            column_type=col.chemistry,
+            carbon_load_pct=col.phase.carbon_load_pct,
+            ligand_length=col.phase.ligand_length,
+            bonding_density_umol_m2=col.phase.bonding_density_umol_m2,
+            surface_area_m2_g=col.phase.surface_area_m2_g,
+            pore_size_a=col.phase.pore_size_a,
+            endcapped=col.phase.endcapped,
+            polar_embedded=col.phase.polar_embedded,
+            particle_type=col.phase.particle_type,
+            base_material=col.phase.base_material,
+            hydrophobicity_index=col.phase.hydrophobicity_index,
+        )
+    else:
+        # No phase data — use reference columns as fallback
+        from app.core.chem.column_comparison import REFERENCE_COLUMNS
+        chem = col.chemistry.lower()
+        ref_key = "C18_endcapped"
+        for key, ref in REFERENCE_COLUMNS.items():
+            if chem in ref.column_type.lower():
+                ref_key = key
+                break
+        ref = REFERENCE_COLUMNS[ref_key]
+        params = estimate_tanaka_from_phase(
+            column_name=f"{col.brand} {col.name}",
+            column_type=col.chemistry,
+            carbon_load_pct=18.0, ligand_length=18, bonding_density_umol_m2=3.0,
+            surface_area_m2_g=180.0, pore_size_a=120.0, endcapped=True,
+            polar_embedded=False, hydrophobicity_index=1.0,
+        )
+    return params.to_dict()
+
+
 @router.post("/tanaka/compare")
 async def compare_two_columns(data: ColumnCompareRequest) -> dict:
     """Compare two columns using Tanaka parameters."""

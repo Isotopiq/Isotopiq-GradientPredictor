@@ -196,6 +196,16 @@ export function MethodLibraryPage() {
     onError: () => toast.error('Failed to share method'),
   });
 
+  const unshareMutation = useMutation({
+    mutationFn: (id: string) => methodsApi.unshare(id),
+    onSuccess: (method) => {
+      setSelected(method);
+      queryClient.invalidateQueries({ queryKey: ['methods-library'] });
+      toast.success('Share link disabled');
+    },
+    onError: () => toast.error('Failed to unshare method'),
+  });
+
   const handleSaveEdit = async () => {
     if (!selected) return;
     setSaving(true);
@@ -399,14 +409,40 @@ export function MethodLibraryPage() {
                           >
                             <Pencil size={14} className="mr-1" /> Edit
                           </button>
-                          <button
-                            onClick={() => shareMutation.mutate(selected.id)}
-                            className="btn-outline btn-sm"
-                            disabled={shareMutation.isPending}
-                          >
-                            <Share2 size={14} className="mr-1" />
-                            {selected.is_shared ? 'Copy Link' : 'Share'}
-                          </button>
+                          {selected.is_shared ? (
+                            <>
+                              <button
+                                onClick={() => shareMutation.mutate(selected.id)}
+                                className="btn-outline btn-sm"
+                                disabled={shareMutation.isPending}
+                              >
+                                <Share2 size={14} className="mr-1" />
+                                Copy Link
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm('Disable sharing? The existing share link will stop working.')) {
+                                    unshareMutation.mutate(selected.id);
+                                  }
+                                }}
+                                className="btn-outline btn-sm text-destructive"
+                                disabled={unshareMutation.isPending}
+                                title="Disable share link"
+                              >
+                                <X size={14} className="mr-1" />
+                                Unshare
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => shareMutation.mutate(selected.id)}
+                              className="btn-outline btn-sm"
+                              disabled={shareMutation.isPending}
+                            >
+                              <Share2 size={14} className="mr-1" />
+                              Share
+                            </button>
+                          )}
                           <div className="relative" ref={exportRef}>
                             <button
                               onClick={() => setExportOpen(!exportOpen)}

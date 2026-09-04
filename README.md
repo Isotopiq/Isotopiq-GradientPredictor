@@ -46,18 +46,25 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ## Easypanel deployment
 
 An Easypanel-ready compose file is included at `docker-compose.easypanel.yml`.
+It uses unique ports (19100 for backend, 19180 for frontend) to avoid conflicts
+with other Easypanel services.
 
 1. In Easypanel, create a new project and choose **Docker Compose** as the source.
 2. Point to this repo or paste the contents of `docker-compose.easypanel.yml`.
 3. Set these environment variables in the Easypanel UI:
    - `POSTGRES_PASSWORD` — strong password for the database
-   - `JWT_SECRET` — long random string for JWT signing
+   - `JWT_SECRET` — long random string for JWT signing (e.g. `openssl rand -hex 32`)
    - `ADMIN_EMAIL` — admin login email
    - `ADMIN_PASSWORD` — admin login password (change from default!)
+   - `CORS_ORIGINS` — your frontend domain (e.g. `https://lcms.yourdomain.com`)
+   - `FRONTEND_URL` — your frontend domain (for password reset links)
 4. Configure domains in Easypanel:
-   - Primary domain (e.g. `lcms.yourdomain.com`) → `frontend:18780`
-   - Optional API domain (e.g. `api.yourdomain.com`) → `backend:18700`
+   - Primary domain (e.g. `lcms.yourdomain.com`) → `frontend` service (port 19180)
+   - Optional API domain (e.g. `api.yourdomain.com`) → `backend` service (port 19100)
 5. Deploy. Easypanel provisions SSL certificates automatically.
+
+The database is internal-only (no published port) for security. The frontend
+nginx proxies `/api/*` requests to the backend over the internal compose network.
 
 The database stays internal to the compose network (not exposed to the host).
 
