@@ -27,6 +27,21 @@ function gaussian(x: number, center: number, width: number, height: number): num
   return height * Math.exp(-((x - center) ** 2) / (2.0 * sigma ** 2));
 }
 
+// EMG (Exponentially Modified Gaussian) — standard chromatographic peak model with tailing
+function emg(x: number, center: number, width: number, height: number, tauRatio: number = 1.5): number {
+  const sigma = width / (2.0 * Math.sqrt(2.0 * Math.log(2.0)));
+  if (sigma <= 0) return 0;
+  const tau = sigma * Math.max(0.01, tauRatio - 1.0);
+  const z = (center + (sigma * sigma) / tau - x) / (sigma * Math.sqrt(2.0));
+  const arg = (sigma * sigma) / (2.0 * tau) + (center - x) / tau;
+  if (arg > 50 || arg < -50) return 0;
+  // erfc approximation (Abramowitz & Stegun 7.1.26)
+  const t = 1.0 / (1.0 + 0.3275911 * Math.abs(z));
+  const erfApprox = 1.0 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-z * z);
+  const erfcVal = z >= 0 ? 1.0 - erfApprox : 1.0 + erfApprox;
+  return (height / 2.0) * Math.exp(arg) * erfcVal;
+}
+
 export function ChromatogramPreview({ chromatogram, loading }: ChromatogramPreviewProps) {
   if (loading) {
     return (
@@ -53,8 +68,9 @@ export function ChromatogramPreview({ chromatogram, loading }: ChromatogramPrevi
   const peakTraces = chromatogram.peaks.map((p, i) => {
     const color = p.color || PEAK_COLORS[i % PEAK_COLORS.length];
     const key = `xic_${i}`;
+    const tailing = (p as { tailing?: number }).tailing || 1.5;
     const values = chromatogram.times.map((t) =>
-      gaussian(t, p.rt_s, p.width_s || 10, p.height || 1.0),
+      emg(t, p.rt_s, p.width_s || 10, p.height || 1.0, tailing),
     );
     return { key, color, label: p.label || `Peak ${i + 1}`, rtMin: p.rt_s / 60, values };
   });

@@ -50,6 +50,7 @@ async def export_method(
     current: CurrentUser,
     format: str = Query("pdf", pattern="^(pdf|csv|agilent|waters|thermo)$"),
     compound_id: uuid.UUID | None = Query(None),
+    include_chromatogram: bool = Query(False),
 ):
     method = await method_service.get_method(db, method_id)
     if method is None:
@@ -85,7 +86,10 @@ async def export_method(
                 "report_footer": app_settings.report_footer,
                 "logo_bytes": app_settings.logo_bytes,
             }
-        pdf_bytes = export_method_pdf(method, compound, None, settings_dict)
+        pdf_bytes = export_method_pdf(
+            method, compound, None, settings_dict,
+            include_chromatogram=include_chromatogram,
+        )
         return StreamingResponse(
             io.BytesIO(pdf_bytes),
             media_type="application/pdf",

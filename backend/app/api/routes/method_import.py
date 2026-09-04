@@ -104,6 +104,41 @@ async def parse_meth(
     return ParsedMethodOut(**parsed.to_dict())
 
 
+# --- F11: CSV/TXT Chromatogram Import ---
+
+
+@router.post("/parse-chromatogram-csv")
+async def parse_chromatogram_csv(
+    current: CurrentUser,
+    file: UploadFile = File(...),
+) -> dict[str, Any]:
+    """Parse a CSV/TXT chromatogram file (Agilent, Chromeleon, Empower, or generic)."""
+    from app.core.chem.chromatogram_import import (
+        ChromatogramImportError,
+        parse_chromatogram_csv as _parse,
+    )
+
+    content_bytes = await file.read()
+    if not content_bytes:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Empty file")
+
+    # Limit file size
+    if len(content_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File too large (max 10 MB)")
+
+    try:
+        content = content_bytes.decode("utf-8", errors="replace")
+    except Exception as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Could not decode file") from exc
+
+    try:
+        result = _parse(content, filename=file.filename or "")
+    except ChromatogramImportError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+
+    return result.to_dict()
+
+
 @router.post("/parse-mzxml", response_model=MzXmlSummaryOut)
 async def parse_mzxml_route(
     current: CurrentUser,

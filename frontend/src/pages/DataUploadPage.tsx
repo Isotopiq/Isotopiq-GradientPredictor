@@ -12,6 +12,8 @@ import { mlApi } from '@/api/ml';
 import { methodImportApi } from '@/api/methodImport';
 import { compoundsApi } from '@/api/compounds';
 import { InfoTooltip } from '@/components/InfoTooltip';
+import { PeakTableInput } from '@/components/PeakTableInput';
+import { PeakTrackingPanel } from '@/components/PeakTrackingPanel';
 import { toast } from 'sonner';
 import type { Compound } from '@/types';
 import type {
@@ -688,6 +690,114 @@ function MethodImportSection({ defaultColumn }: { defaultColumn: string }) {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* F11: CSV/TXT Chromatogram Import */}
+      <CsvChromatogramImport />
+
+      {/* F12: Manual Peak Table Entry */}
+      <PeakTableInput onPeaksSubmit={(peaks) => {
+        toast.success(`Received ${peaks.length} manual peaks — use for calibration`);
+      }} />
+
+      {/* F14: Peak Tracking / Matching */}
+      <PeakTrackingPanel />
+
+    </div>
+  );
+}
+
+// F11: CSV/TXT Chromatogram Import Section
+function CsvChromatogramImport() {
+  const [file, setFile] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{
+    time_min: number[];
+    intensity: number[];
+    detector: string;
+    wavelength_nm: number | null;
+    sample_name: string;
+    n_points: number;
+    peaks: Array<{ rt_min: number; height: number; width_min: number; area: number; index: number }>;
+  } | null>(null);
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) setFile(f);
+  };
+
+  const handleParse = async () => {
+    if (!file) return;
+    setLoading(true);
+    try {
+      const res = await methodImportApi.parseChromatogramCsv(file);
+      setResult(res);
+      toast.success(`Parsed ${res.n_points} points, ${res.peaks.length} peaks detected`);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to parse chromatogram');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <FileText size={16} className="text-accent" />
+        <h3 className="text-sm font-semibold">CSV/TXT Chromatogram Import</h3>
+      </div>
+      <p className="mb-3 text-xs text-muted-foreground">
+        Import chromatogram data from Agilent, Chromeleon, Empower, or generic CSV/TXT exports.
+        Supports time/intensity columns with auto-detection of format.
+      </p>
+      <div className="flex gap-2">
+        <label className="btn-secondary cursor-pointer text-xs">
+          Choose CSV/TXT file
+          <input type="file" accept=".csv,.txt,.CSV,.TXT" onChange={handleFile} className="hidden" />
+        </label>
+        {file && (
+          <button onClick={handleParse} disabled={loading} className="btn-primary text-xs">
+            {loading ? 'Parsing...' : `Parse ${file.name}`}
+          </button>
+        )}
+      </div>
+
+      {result && (
+        <div className="mt-3 space-y-2">
+          <div className="rounded-md bg-muted/30 p-2 text-xs">
+            <div className="flex gap-4">
+              <span><strong>Points:</strong> {result.n_points}</span>
+              <span><strong>Detector:</strong> {result.detector}</span>
+              {result.wavelength_nm && <span><strong>λ:</strong> {result.wavelength_nm} nm</span>}
+              <span><strong>Sample:</strong> {result.sample_name}</span>
+            </div>
+          </div>
+          {result.peaks.length > 0 && (
+            <div>
+              <div className="text-xs font-semibold text-muted-foreground">Detected Peaks ({result.peaks.length})</div>
+              <table className="mt-1 w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="px-1 py-1 text-left">RT (min)</th>
+                    <th className="px-1 py-1 text-right">Height</th>
+                    <th className="px-1 py-1 text-right">Width (min)</th>
+                    <th className="px-1 py-1 text-right">Area</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.peaks.map((p, i) => (
+                    <tr key={i} className="border-b border-border/50">
+                      <td className="px-1 py-1">{p.rt_min.toFixed(3)}</td>
+                      <td className="px-1 py-1 text-right">{p.height.toFixed(1)}</td>
+                      <td className="px-1 py-1 text-right">{p.width_min.toFixed(4)}</td>
+                      <td className="px-1 py-1 text-right">{p.area.toFixed(1)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>

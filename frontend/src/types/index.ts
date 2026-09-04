@@ -116,6 +116,8 @@ export interface Method {
   is_shared: boolean;
   share_token: string | null;
   compounds_smiles: string[] | null;
+  dwell_volume_ml: number | null;
+  dead_volume_ml: number | null;
 }
 
 export interface MethodCreate {
@@ -130,6 +132,8 @@ export interface MethodCreate {
   flow_rate_ml_min?: number;
   temperature_c?: number;
   compounds_smiles?: string[];
+  dwell_volume_ml?: number;
+  dead_volume_ml?: number;
 }
 
 export interface ColumnSuggestion {
@@ -204,18 +208,27 @@ export interface GradientSimulateRequest {
   hbd?: number;
   hba?: number;
   column_type?: string;
+  column_id?: string;
+  smiles?: string;
+  ph?: number;
   calibration_runs?: Array<{
     gradient_time_s: number;
     phi_start: number;
     phi_end: number;
     observed_rt_s: number;
   }>;
+  dwell_volume_ml?: number;
+  dead_volume_ml?: number;
 }
 
 export interface GradientSimulateResult {
   predicted_rt_s: number;
   gradient_table: GradientPoint[];
   method: string;
+  confidence?: number;
+  extrapolating?: boolean;
+  rt_lower_s?: number;
+  rt_upper_s?: number;
 }
 
 export interface ChromatogramRequest {
@@ -239,6 +252,7 @@ export interface ChromatogramResult {
     height: number;
     label: string;
     color: string;
+    tailing?: number;
   }>;
 }
 
@@ -500,4 +514,244 @@ export interface MultiCompoundSuggestion {
   };
   resolution_matrix: ResolutionPair[];
   co_elution_count: number;
+}
+
+// F7: Suitability Criteria
+export interface SuitabilityCriteria {
+  min_resolution: number;
+  max_run_time_min: number;
+  min_k: number;
+  max_k: number;
+  min_peak_height_ratio?: number | null;
+}
+
+export interface CriterionResult {
+  name: string;
+  passed: boolean;
+  value: number;
+  target: string;
+  detail: string;
+}
+
+export interface SuitabilityEvaluation {
+  overall_score: number;
+  all_passed: boolean;
+  criteria: CriterionResult[];
+}
+
+// F6: Prediction Equation Mode
+export interface KnownCompoundRT {
+  smiles: string;
+  rt_min: number;
+  column_type?: string;
+  ph?: number;
+  gradient_time_min?: number;
+  flow_rate_ml_min?: number;
+  temperature_c?: number;
+}
+
+export interface PredictionEquation {
+  coefficients: Record<string, number>;
+  intercept: number;
+  r: number;
+  r_squared: number;
+  std_dev: number;
+  n: number;
+  descriptor_names: string[];
+  descriptor_means: Record<string, number>;
+  descriptor_stds: Record<string, number>;
+}
+
+export interface PredictionResult {
+  predicted_rt_min: number;
+  confidence_interval_lower: number;
+  confidence_interval_upper: number;
+  in_applicability_domain: boolean;
+  extrapolation_warnings: string[];
+}
+
+// F9: Model Selection
+export interface CalibrationPoint {
+  gradient_time_min: number;
+  observed_rt_min: number;
+  compound_id?: string | null;
+}
+
+export interface ModelFit {
+  model_type: string;
+  coefficients: number[];
+  r_squared: number;
+  rmse: number;
+  max_residual: number;
+  n_points: number;
+}
+
+export interface FitQuality {
+  r_squared: number;
+  rmse: number;
+  max_residual: number;
+  bad_peaks_count: number;
+  bad_peaks_threshold: number;
+  residuals: number[];
+}
+
+export interface ModelSelectionResult {
+  best_model: string;
+  best_fit: ModelFit;
+  all_models: Array<{ model: string; fit: ModelFit; quality: FitQuality }>;
+  best_quality: FitQuality;
+}
+
+// F10: pH Selector
+export interface PkaSite {
+  pka: number;
+  acid_base: string;
+  atom_idx: number;
+}
+
+export interface PhDistribution {
+  ph_values: number[];
+  species_fractions: number[][];
+  net_charges: number[];
+  pka_sites: PkaSite[];
+  smiles: string;
+}
+
+export interface PhSuitabilityMap {
+  ph_values: number[];
+  zones: string[];
+  min_logd: number[];
+  recommended_phs: number[];
+  buffer_suggestions: Array<{
+    name: string;
+    pKa: number;
+    range: [number, number];
+    ms_compatible: boolean;
+    recipe: string;
+  }>;
+}
+
+// F4/F5: Resolution Maps
+export interface ResolutionMap1D {
+  variable: string;
+  x_values: number[];
+  min_rs: number[];
+  per_compound_rts: number[][];
+  co_elution_points: Array<{ x: number; min_rs: number }>;
+  suitability_scores: number[];
+}
+
+export interface ResolutionMap2D {
+  var_x: string;
+  var_y: string;
+  x_values: number[];
+  y_values: number[];
+  rs_grid: number[][];
+  optimal_point: { x: number; y: number; rs: number };
+  suitability_grid: number[][];
+}
+
+// F8: Ternary Solvent Optimization
+export interface TernaryPoint {
+  frac_a: number;
+  frac_b: number;
+  frac_c: number;
+  min_rs: number;
+}
+
+export interface TernaryOptResult {
+  solvent_a: string;
+  solvent_b: string;
+  solvent_c: string;
+  mode: string;
+  optimal: {
+    frac_a: number;
+    frac_b: number;
+    frac_c: number;
+    min_rs: number;
+    rts: number[];
+  } | null;
+  points: TernaryPoint[];
+}
+
+// F2: Method Transfer
+export interface TransferColumnSpec {
+  length_mm: number;
+  inner_diameter_mm: number;
+  particle_size_um: number;
+  dwell_volume_ml?: number;
+  dead_volume_ml?: number;
+}
+
+export interface MethodTransferResult {
+  column: TransferColumnSpec;
+  flow_rate_ml_min: number;
+  gradient_table: Array<{ time_s: number; percent_b: number }>;
+  injection_volume_ul: number;
+  temperature_c: number;
+  scaling_factors: Record<string, number>;
+  notes: string[];
+}
+
+// F3: Tanaka Column Comparison
+export interface TanakaParameters {
+  column_name: string;
+  column_type: string;
+  k_pb: number;
+  alpha_ch2: number;
+  alpha_t_o: number;
+  alpha_c_p: number;
+  alpha_b_a_76: number;
+  alpha_b_a_27: number;
+}
+
+export interface ColumnComparisonResult {
+  column_a: TanakaParameters;
+  column_b: TanakaParameters;
+  cdf: number;
+  parameter_differences: Record<string, number>;
+  similarity: number;
+  orthogonality: number;
+}
+
+// F15: Mobile Phase Editor / Buffer Calculator
+export interface BufferCalcResult {
+  estimated_ph: number;
+  buffer_name: string;
+  concentration_mM: number;
+  ms_compatible: boolean;
+  warnings: string[];
+  recipe: string;
+}
+
+export interface MobilePhaseCheckResult {
+  ms_compatible: boolean;
+  warnings: string[];
+}
+
+// F14: Peak Tracking
+export interface TrackPeak {
+  rt_min: number;
+  area: number;
+  height: number;
+  width_min: number;
+  uv_spectrum?: number[] | null;
+  compound_name?: string;
+}
+
+export interface PeakMatch {
+  peaks: Array<TrackPeak & { chromatogram_id: string }>;
+  confidence: number;
+  mean_rt: number;
+  rt_std: number;
+  mean_area: number;
+  area_cv: number;
+  matched: boolean;
+}
+
+export interface PeakTrackingResult {
+  matches: PeakMatch[];
+  unmatched: Array<TrackPeak & { chromatogram_id: string }>;
+  n_chromatograms: number;
+  n_matched_groups: number;
 }

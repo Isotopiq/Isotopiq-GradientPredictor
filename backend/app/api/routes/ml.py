@@ -122,34 +122,61 @@ async def model_stats(db: DBSession, current: CurrentUser) -> dict:
     from app.models.run import Run
     from app.models.prediction import Prediction
 
+    # Build owner filter for non-admin users
+    uid = None if current.is_admin else current.id
+
     # Count models by type
-    model_count_result = await db.execute(
-        select(ModelArtifact.model_type, func.count(ModelArtifact.id))
-        .group_by(ModelArtifact.model_type)
-    )
+    model_type_q = select(ModelArtifact.model_type, func.count(ModelArtifact.id)).group_by(ModelArtifact.model_type)
+    if uid is not None:
+        model_type_q = model_type_q.where(ModelArtifact.owner_id == uid)
+    model_count_result = await db.execute(model_type_q)
     models_by_type = {row[0]: row[1] for row in model_count_result.all()}
 
     # Count models by column type
-    col_count_result = await db.execute(
-        select(ModelArtifact.column_type, func.count(ModelArtifact.id))
-        .group_by(ModelArtifact.column_type)
-    )
+    model_col_q = select(ModelArtifact.column_type, func.count(ModelArtifact.id)).group_by(ModelArtifact.column_type)
+    if uid is not None:
+        model_col_q = model_col_q.where(ModelArtifact.owner_id == uid)
+    col_count_result = await db.execute(model_col_q)
     models_by_column = {row[0]: row[1] for row in col_count_result.all()}
 
-    # Total counts
-    total_models = await db.scalar(select(func.count(ModelArtifact.id)))
-    total_compounds = await db.scalar(select(func.count(Compound.id)))
-    total_methods = await db.scalar(select(func.count(Method.id)))
-    total_runs = await db.scalar(select(func.count(Run.id)))
-    total_predictions = await db.scalar(select(func.count(Prediction.id)))
+    # Total counts — scoped to the current user (admin sees global counts)
+    if uid is None:
+        total_models = await db.scalar(select(func.count(ModelArtifact.id)))
+        total_compounds = await db.scalar(select(func.count(Compound.id)))
+        total_methods = await db.scalar(select(func.count(Method.id)))
+        total_runs = await db.scalar(select(func.count(Run.id)))
+        total_predictions = await db.scalar(select(func.count(Prediction.id)))
+    else:
+        total_models = await db.scalar(
+            select(func.count(ModelArtifact.id)).where(ModelArtifact.owner_id == uid)
+        )
+        total_compounds = await db.scalar(
+            select(func.count(Compound.id)).where(Compound.owner_id == uid)
+        )
+        total_methods = await db.scalar(
+            select(func.count(Method.id)).where(Method.owner_id == uid)
+        )
+        total_runs = await db.scalar(
+            select(func.count(Run.id)).where(Run.owner_id == uid)
+        )
+        # Predictions don't have owner_id — join through method
+        total_predictions = await db.scalar(
+            select(func.count(Prediction.id))
+            .join(Method, Prediction.method_id == Method.id)
+            .where(Method.owner_id == uid)
+        )
 
-    # Average confidence across predictions
-    avg_confidence = await db.scalar(select(func.avg(Prediction.confidence)))
+    # Average confidence across predictions (scoped)
+    avg_q = select(func.avg(Prediction.confidence))
+    if uid is not None:
+        avg_q = avg_q.join(Method, Prediction.method_id == Method.id).where(Method.owner_id == uid)
+    avg_confidence = await db.scalar(avg_q)
 
-    # Latest models with metrics
-    recent_result = await db.execute(
-        select(ModelArtifact).order_by(ModelArtifact.trained_at.desc()).limit(10)
-    )
+    # Latest models with metrics (scoped)
+    recent_q = select(ModelArtifact).order_by(ModelArtifact.trained_at.desc()).limit(10)
+    if uid is not None:
+        recent_q = recent_q.where(ModelArtifact.owner_id == uid)
+    recent_result = await db.execute(recent_q)
     recent_models = []
     for a in recent_result.scalars().all():
         metrics = a.train_metrics or {}
@@ -165,9 +192,12 @@ async def model_stats(db: DBSession, current: CurrentUser) -> dict:
             "trained_at": a.trained_at.isoformat() if a.trained_at else None,
         })
 
-    # Best performing model per column type
+    # Best performing model per column type (scoped)
     best_by_column: dict[str, dict] = {}
-    all_result = await db.execute(select(ModelArtifact))
+    all_q = select(ModelArtifact)
+    if uid is not None:
+        all_q = all_q.where(ModelArtifact.owner_id == uid)
+    all_result = await db.execute(all_q)
     for a in all_result.scalars().all():
         metrics = a.train_metrics or {}
         r2 = metrics.get("r2", 0)

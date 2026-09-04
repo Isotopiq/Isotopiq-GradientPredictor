@@ -16,6 +16,8 @@ import {
   LogOut,
   Menu,
   X,
+  ArrowRightLeft,
+  Columns3,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -58,7 +60,9 @@ const navSections: NavSection[] = [
     items: [
       { to: '/batch', label: 'Batch Analysis', icon: Layers },
       { to: '/compare', label: 'Method Comparison', icon: GitCompare },
+      { to: '/method-transfer', label: 'Method Transfer', icon: ArrowRightLeft },
       { to: '/columns', label: 'Column Database', icon: Database },
+      { to: '/column-comparison', label: 'Column Comparison', icon: Columns3 },
       { to: '/templates', label: 'Templates', icon: LayoutTemplate },
     ],
   },
@@ -80,6 +84,8 @@ const pageTitles: Record<string, string> = {
   '/models': 'ML Models',
   '/batch': 'Batch Analysis',
   '/compare': 'Method Comparison',
+  '/method-transfer': 'Method Transfer',
+  '/column-comparison': 'Column Comparison',
   '/columns': 'Column Database',
   '/templates': 'Method Templates',
   '/admin': 'Admin Panel',

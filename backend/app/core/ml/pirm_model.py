@@ -142,6 +142,10 @@ class PIRMCoefficients:
     a6: float = 0.20        # non-endcapped silanol effect
     a7: float = -0.15       # polar embedded shift
     a8: float = -0.35       # TPSA effect (polar analytes less retained)
+    # 3D shape descriptors (F6)
+    a9: float = 0.10        # asphericity × phenyl/PFP selectivity
+    a10: float = -0.05      # radius of gyration (larger molecules access more pore)
+    a11: float = 0.08       # PMI ratio (rod-like molecules retained more on phenyl)
 
     # S coefficients (Eq. 3)
     b0: float = 2.0         # base S
@@ -235,6 +239,9 @@ def compute_pirm_params(
     inner_diameter_mm: float,
     flow_rate_ml_min: float = 0.4,
     coeffs: PIRMCoefficients = DEFAULT_COEFFS,
+    asphericity: float = 0.0,
+    radius_of_gyration: float = 0.0,
+    pmi_ratio_13: float = 0.0,
 ) -> PIRMParameters:
     """Compute PIRM parameters (log_k0, S, t0) for an analyte on a column.
 
@@ -270,6 +277,19 @@ def compute_pirm_params(
         "polar_embedded": coeffs.a7 * polar_emb,
         "tpsa_effect": coeffs.a8 * tmb,
     }
+
+    # 3D shape descriptors (F6): phenyl/PFP columns show shape selectivity
+    # Asphericity and PMI ratio capture rod-like vs spherical shape
+    is_shape_selective = phase.hydrophobicity_index > 0 and phase.ligand_length in (6,)  # phenyl/PFP
+    if is_shape_selective and asphericity > 0:
+        k0_terms["shape_selectivity"] = coeffs.a9 * asphericity
+        if pmi_ratio_13 > 0:
+            k0_terms["pmi_selectivity"] = coeffs.a11 * pmi_ratio_13
+    if radius_of_gyration > 0:
+        # Larger molecules have slightly less retention on small-pore phases
+        pore_factor = 1.0 if phase.pore_size_a >= 150 else 0.5
+        k0_terms["size_exclusion"] = coeffs.a10 * radius_of_gyration * pore_factor
+
     log_k0 = sum(k0_terms.values())
 
     # HILIC phases: invert the model — polar analytes are MORE retained
@@ -345,6 +365,8 @@ def predict_rt_pirm(
     params: PIRMParameters,
     gradient_table: list[dict],
     flow_rate_ml_min: float = 0.4,
+    dwell_volume_ml: float | None = None,
+    dead_volume_ml: float | None = None,
 ) -> float:
     """Predict retention time for a multi-segment gradient using PIRM.
 
@@ -356,13 +378,26 @@ def predict_rt_pirm(
     For multi-segment gradients, we integrate segment by segment.
 
     gradient_table: list of {time_s, percent_b} points (piecewise linear).
+
+    F1: If dwell_volume_ml is provided, the gradient is shifted by t_dwell.
+    F1: If dead_volume_ml is provided, it overrides the geometric t0.
     """
     if not gradient_table:
         return params.t0
 
-    t0 = params.t0
+    # F1: Use measured dead volume for t0 if provided
+    if dead_volume_ml is not None and dead_volume_ml > 0:
+        t0 = 60.0 * dead_volume_ml / max(flow_rate_ml_min, 0.01)
+    else:
+        t0 = params.t0
+
     log_k0 = params.log_k0
     s = params.s
+
+    # F1: Compute dwell time shift
+    t_dwell = 0.0
+    if dwell_volume_ml is not None and dwell_volume_ml > 0:
+        t_dwell = 60.0 * dwell_volume_ml / max(flow_rate_ml_min, 0.01)
 
     # Numerical integration: step through the gradient in small time steps
     # and track when the analyte elutes.
@@ -371,17 +406,19 @@ def predict_rt_pirm(
 
     # Build a function phi(t) by linear interpolation
     def phi_at(t: float) -> float:
-        if t <= gradient_table[0]["time_s"]:
+        # Shift by dwell time
+        effective_t = t - t_dwell
+        if effective_t <= gradient_table[0]["time_s"]:
             return gradient_table[0]["percent_b"] / 100.0
         for i in range(len(gradient_table) - 1):
             t0_i = gradient_table[i]["time_s"]
             t1_i = gradient_table[i + 1]["time_s"]
-            if t0_i <= t <= t1_i:
+            if t0_i <= effective_t <= t1_i:
                 p0 = gradient_table[i]["percent_b"] / 100.0
                 p1 = gradient_table[i + 1]["percent_b"] / 100.0
                 if t1_i == t0_i:
                     return p1
-                frac = (t - t0_i) / (t1_i - t0_i)
+                frac = (effective_t - t0_i) / (t1_i - t0_i)
                 return p0 + frac * (p1 - p0)
         return gradient_table[-1]["percent_b"] / 100.0
 
@@ -392,8 +429,8 @@ def predict_rt_pirm(
     migration = 0.0  # fractional position along column (0 to 1)
     t = 0.0
 
-    while t < total_time + t0 * 2:  # allow up to 2x t0 past gradient end
-        phi = phi_at(min(t, total_time))
+    while t < total_time + t0 * 2 + t_dwell:  # allow up to 2x t0 past gradient end
+        phi = phi_at(min(t, total_time + t_dwell))
         k = 10 ** (log_k0 - s * phi)
         if k < 0.01:
             k = 0.01  # prevent near-zero retention from causing numerical issues
@@ -405,7 +442,7 @@ def predict_rt_pirm(
 
     if migration < 1.0:
         # Analyte hasn't eluted — return total run time + t0
-        return total_time + t0
+        return total_time + t0 + t_dwell
 
     return round(t, 2)
 
@@ -482,6 +519,11 @@ def predict_retention(
     flow_rate_ml_min: float = 0.4,
     coeffs: PIRMCoefficients = DEFAULT_COEFFS,
     has_calibration: bool = False,
+    asphericity: float = 0.0,
+    radius_of_gyration: float = 0.0,
+    pmi_ratio_13: float = 0.0,
+    dwell_volume_ml: float | None = None,
+    dead_volume_ml: float | None = None,
 ) -> dict[str, Any]:
     """Full retention prediction pipeline.
 
@@ -511,9 +553,14 @@ def predict_retention(
         inner_diameter_mm=column.inner_diameter_mm,
         flow_rate_ml_min=flow_rate_ml_min,
         coeffs=coeffs,
+        asphericity=asphericity,
+        radius_of_gyration=radius_of_gyration,
+        pmi_ratio_13=pmi_ratio_13,
     )
 
-    rt = predict_rt_pirm(params, gradient_table, flow_rate_ml_min)
+    rt = predict_rt_pirm(params, gradient_table, flow_rate_ml_min,
+                          dwell_volume_ml=dwell_volume_ml,
+                          dead_volume_ml=dead_volume_ml)
 
     # Check if gradient is linear (single ramp segment)
     is_linear = _is_linear_gradient(gradient_table)

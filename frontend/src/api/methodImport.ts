@@ -204,4 +204,22 @@ export const methodImportApi = {
     );
     return data;
   },
+
+  // F11: CSV/TXT Chromatogram Import
+  parseChromatogramCsv: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await apiClient.post<{
+      time_min: number[];
+      intensity: number[];
+      detector: string;
+      wavelength_nm: number | null;
+      sample_name: string;
+      n_points: number;
+      peaks: Array<{ rt_min: number; height: number; width_min: number; area: number; index: number }>;
+    }>('/method-import/parse-chromatogram-csv', formData, {
+      headers: { 'Content-Type': undefined },
+    });
+    return data;
+  },
 };

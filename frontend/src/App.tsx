@@ -14,7 +14,9 @@ import { DashboardPage } from '@/pages/DashboardPage';
 import { MethodLibraryPage } from '@/pages/MethodLibraryPage';
 import { BatchAnalysisPage } from '@/pages/BatchAnalysisPage';
 import { MethodComparisonPage } from '@/pages/MethodComparisonPage';
+import { MethodTransferPage } from '@/pages/MethodTransferPage';
 import { ColumnDatabasePage } from '@/pages/ColumnDatabasePage';
+import { ColumnComparisonPage } from '@/pages/ColumnComparisonPage';
 import { TemplatesPage } from '@/pages/TemplatesPage';
 import { SharedMethodPage } from '@/pages/SharedMethodPage';
 import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
@@ -118,11 +120,31 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/method-transfer"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <MethodTransferPage />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/columns"
         element={
           <ProtectedRoute>
             <AppShell>
               <ColumnDatabasePage />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/column-comparison"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <ColumnComparisonPage />
             </AppShell>
           </ProtectedRoute>
         }

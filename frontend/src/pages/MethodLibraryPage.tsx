@@ -230,10 +230,13 @@ export function MethodLibraryPage() {
     }
   };
 
-  const handleExport = useCallback(async (id: string, format: string, ext: string) => {
+  const [includeChromatogram, setIncludeChromatogram] = useState(false);
+
+  const handleExport = useCallback(async (id: string, format: string, ext: string, withChromatogram: boolean = false) => {
+    const includeChroma = withChromatogram || includeChromatogram;
     try {
       const resp = await apiClient.get(`/export/method/${id}`, {
-        params: { format },
+        params: { format, include_chromatogram: includeChroma ? 'true' : 'false' },
         responseType: 'blob',
       });
       const url = URL.createObjectURL(resp.data);
@@ -247,10 +250,11 @@ export function MethodLibraryPage() {
     } catch {
       toast.error('Export failed');
     }
-  }, []);
+  }, [includeChromatogram]);
 
   const exportFormats = [
     { label: 'PDF Report', format: 'pdf', ext: 'pdf' },
+    { label: 'PDF + Chromatogram', format: 'pdf', ext: 'pdf', withChromatogram: true },
     { label: 'CSV', format: 'csv', ext: 'csv' },
     { label: 'Agilent (.m)', format: 'agilent', ext: 'm' },
     { label: 'Waters (.mth)', format: 'waters', ext: 'mth' },
@@ -412,16 +416,27 @@ export function MethodLibraryPage() {
                               <ChevronDown size={12} className="ml-1" />
                             </button>
                             {exportOpen && (
-                              <div className="absolute right-0 top-10 z-50 w-48 overflow-hidden rounded-lg border border-border bg-card shadow-lg animate-slide-down">
-                                {exportFormats.map((f) => (
+                              <div className="absolute right-0 top-10 z-50 w-56 overflow-hidden rounded-lg border border-border bg-card shadow-lg animate-slide-down">
+                                {exportFormats.map((f, idx) => (
                                   <button
-                                    key={f.format}
-                                    onClick={() => handleExport(selected.id, f.format, f.ext)}
+                                    key={`${f.format}-${idx}`}
+                                    onClick={() => handleExport(selected.id, f.format, f.ext, (f as { withChromatogram?: boolean }).withChromatogram === true)}
                                     className="flex w-full items-center gap-2 px-3 py-2 text-xs hover:bg-muted"
                                   >
                                     <Download size={12} /> {f.label}
                                   </button>
                                 ))}
+                                <div className="border-t border-border px-3 py-2">
+                                  <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={includeChromatogram}
+                                      onChange={(e) => setIncludeChromatogram(e.target.checked)}
+                                      className="rounded border-border"
+                                    />
+                                    Include XIC chromatogram in all PDFs
+                                  </label>
+                                </div>
                               </div>
                             )}
                           </div>

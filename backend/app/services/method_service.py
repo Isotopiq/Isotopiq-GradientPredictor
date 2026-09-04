@@ -117,6 +117,8 @@ async def create_method(
         temperature_c=data.temperature_c,
         method_signature=signature,
         compounds_smiles=data.compounds_smiles,  # type: ignore[arg-type]
+        dwell_volume_ml=data.dwell_volume_ml,
+        dead_volume_ml=data.dead_volume_ml,
     )
     db.add(method)
     await db.commit()
@@ -149,7 +151,77 @@ async def delete_method(db: AsyncSession, method_id: uuid.UUID) -> bool:
 
 
 def simulate_gradient(data: GradientSimulateRequest) -> dict[str, Any]:
-    """Predict RT for a gradient, using calibration runs if provided, else heuristic."""
+    """Predict RT for a gradient.
+
+    Priority:
+      1. PIRM (if column_id references a commercial column with phase data)
+      2. LSS fit (if calibration runs provided)
+      3. Heuristic LSS (fallback)
+
+    If smiles + pH are provided, logD is computed server-side using
+    multi-site Henderson-Hasselbalch (more accurate than the frontend
+    single-pKa approximation).
+    """
+    # Compute logD from SMILES + pH if provided
+    effective_logp = data.logp
+    if data.smiles and data.ph is not None:
+        try:
+            from app.core.chem.parser import parse_mol
+            from app.core.chem.logd import logd_at_ph
+
+            mol = parse_mol(data.smiles).mol
+            effective_logp = logd_at_ph(mol, data.ph, data.logp)
+        except Exception:
+            pass  # fall back to raw logP
+
+    # 1. Try PIRM if a commercial column ID is provided
+    if data.column_id:
+        from app.core.chem.columns_db import get_column
+        from app.core.ml.pirm_model import predict_retention as pirm_predict
+
+        col = get_column(data.column_id)
+        if col is not None and col.phase is not None:
+            # Compute 3D descriptors if SMILES is available
+            asph = 0.0
+            rgyr = 0.0
+            pmi_ratio = 0.0
+            if data.smiles:
+                try:
+                    from app.core.chem.parser import parse_mol
+                    from app.core.chem.descriptors import compute_descriptors
+                    mol = parse_mol(data.smiles).mol
+                    desc = compute_descriptors(mol)
+                    if desc.descriptors_3d:
+                        asph = desc.descriptors_3d.asphericity
+                        rgyr = desc.descriptors_3d.radius_of_gyration
+                        pmi_ratio = desc.descriptors_3d.pmi_ratio_13
+                except Exception:
+                    pass
+
+            result = pirm_predict(
+                column=col,
+                logp=effective_logp,
+                mw=data.mw,
+                tpsa=data.tpsa,
+                gradient_table=data.gradient_table,
+                flow_rate_ml_min=data.flow_rate_ml_min,
+                asphericity=asph,
+                radius_of_gyration=rgyr,
+                pmi_ratio_13=pmi_ratio,
+                dwell_volume_ml=data.dwell_volume_ml,
+                dead_volume_ml=data.dead_volume_ml,
+            )
+            return {
+                "predicted_rt_s": result["predicted_rt_s"],
+                "gradient_table": data.gradient_table,
+                "method": "pirm",
+                "confidence": result["confidence"],
+                "extrapolating": result["extrapolating"],
+                "rt_lower_s": result["rt_lower_s"],
+                "rt_upper_s": result["rt_upper_s"],
+            }
+
+    # 2. LSS fit from calibration runs
     if data.calibration_runs and len(data.calibration_runs) >= 2:
         runs = [
             CalibrationRun(
@@ -163,8 +235,9 @@ def simulate_gradient(data: GradientSimulateRequest) -> dict[str, Any]:
         params = fit_lss(runs)
         method = "lss_fit"
     else:
+        # 3. Heuristic LSS
         params = heuristic_lss_params(
-            data.logp,
+            effective_logp,
             mw=data.mw,
             tpsa=data.tpsa,
             hbd=data.hbd,
@@ -178,6 +251,8 @@ def simulate_gradient(data: GradientSimulateRequest) -> dict[str, Any]:
         data.gradient_table,
         flow_rate_ml_min=data.flow_rate_ml_min,
         column_void_volume_ml=data.column_void_volume_ml,
+        dwell_volume_ml=data.dwell_volume_ml,
+        dead_volume_ml=data.dead_volume_ml,
     )
     return {
         "predicted_rt_s": rt,
@@ -187,6 +262,7 @@ def simulate_gradient(data: GradientSimulateRequest) -> dict[str, Any]:
 
 
 def simulate_chromatogram_from_request(data: ChromatogramRequest) -> dict[str, Any]:
+    from app.core.lss.chromatogram import default_tailing
     peaks = [
         Peak(
             rt_s=p["rt_s"],
@@ -194,6 +270,7 @@ def simulate_chromatogram_from_request(data: ChromatogramRequest) -> dict[str, A
             height=p.get("height", 1.0),
             label=p.get("label", ""),
             color=p.get("color", ""),
+            tailing=p.get("tailing", default_tailing(p["rt_s"])),
         )
         for p in data.peaks
     ]
@@ -326,6 +403,7 @@ def optimize_gradient_separation(
     column_type: str | None = None,
     ph: float = 2.7,
     temperature_c: float = 30.0,
+    suitability: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Search for the gradient (%B start/end/time) that maximizes separation.
 
@@ -335,6 +413,7 @@ def optimize_gradient_separation(
     - Minimum pairwise resolution (primary)
     - Separation space utilization (peaks spread across gradient window)
     - Penalties for void-volume elution or post-gradient elution
+    - F7: Suitability criteria (if provided)
 
     Returns the best configuration with predicted RTs and resolution matrix.
     """
@@ -362,10 +441,14 @@ def optimize_gradient_separation(
             flow_rate_ml_min=flow_rate_ml_min,
             column_type_override=column_type,
         )
+        # Compute logD using multi-site Henderson-Hasselbalch
+        from app.core.chem.logd import logd_at_ph
+        logd = logd_at_ph(parsed.mol, ph, sugg.descriptors.logp)
         compounds.append({
             "index": i,
             "smiles": smi,
             "logp": sugg.descriptors.logp,
+            "logd": logd,
             "mw": sugg.descriptors.mw,
             "tpsa": sugg.descriptors.tpsa,
             "hbd": sugg.descriptors.hbd,
@@ -382,24 +465,17 @@ def optimize_gradient_separation(
             column_type=column_type,
         )
 
-    # pH-adjusted logP (same model as frontend)
-    def adjust_logp_for_ph(logp: float, pka_values: list[float] | None) -> float:
-        if not pka_values:
-            return logp
-        pka = pka_values[0]
-        is_acidic = pka < 7
-        delta = ph - pka if is_acidic else pka - ph
-        if delta <= 0:
-            return logp
-        penalty = min(3.0, math.log10(1 + 10 ** delta))
-        return max(-2.0, logp - penalty)
+    # Temperature factor using van 't Hoff (see F8)
+    # ΔH/R ≈ 5000K typical for RP-LC; k(T2)/k(T1) = exp(ΔH/R * (1/T1 - 1/T2))
+    delta_h_over_r = 5000.0  # K
+    t1 = 303.15  # 30°C reference
+    t2 = temperature_c + 273.15
+    temp_rt_factor = math.exp(delta_h_over_r * (1.0 / t1 - 1.0 / t2))
+    temp_rt_factor = max(0.5, min(2.0, temp_rt_factor))
 
-    # Temperature factors (same model as frontend)
-    temp_rt_factor = max(0.7, 1.0 - (temperature_c - 30) * 0.015)
-
-    # Pre-compute effective logP for each compound
+    # Pre-compute effective logD for each compound (already done above)
     for c in compounds:
-        c["effective_logp"] = adjust_logp_for_ph(c["logp"], c.get("pka_values"))
+        c["effective_logp"] = c["logd"]
 
     # Grid search parameters
     b_start_candidates = [2, 5, 8, 10, 15, 20, 25, 30]
@@ -482,6 +558,29 @@ def optimize_gradient_separation(
                 time_penalty = (g_time - 20) * 0.02  # mild preference for shorter gradients
                 score = min_res * 3.0 + utilization * 2.0 - penalty - time_penalty
 
+                # F7: Apply suitability criteria bonus/penalty
+                if suitability:
+                    from app.core.lss.suitability import SuitabilityCriteria, score_method
+                    crit = SuitabilityCriteria(
+                        min_resolution=suitability.get("min_resolution", 1.5),
+                        max_run_time_min=suitability.get("max_run_time_min", 60.0),
+                        min_k=suitability.get("min_k", 0.5),
+                        max_k=suitability.get("max_k", 20.0),
+                    )
+                    t0_calc = 60.0 * 0.4 / max(flow_rate_ml_min, 0.01)  # approximate t0
+                    suit_score = score_method(
+                        [r[1] for r in rts_sorted],
+                        [r[2] for r in rts_sorted],
+                        t_total,
+                        t0_calc,
+                        crit,
+                    )
+                    # Bonus for high suitability, penalty for low
+                    score += suit_score * 5.0
+                    # Hard penalty if run time exceeds max
+                    if g_time > crit.max_run_time_min:
+                        score -= 20.0
+
                 if score > best_score:
                     best_score = score
                     best_min_res = min_res
@@ -532,6 +631,27 @@ def optimize_gradient_separation(
                 "co_elution_risk": rs < 1.5,
             })
 
+    # F7: Evaluate suitability of the best method
+    suitability_eval = None
+    if suitability:
+        from app.core.lss.suitability import SuitabilityCriteria, evaluate_method
+        crit = SuitabilityCriteria(
+            min_resolution=suitability.get("min_resolution", 1.5),
+            max_run_time_min=suitability.get("max_run_time_min", 60.0),
+            min_k=suitability.get("min_k", 0.5),
+            max_k=suitability.get("max_k", 20.0),
+        )
+        t0_calc = 60.0 * 0.4 / max(flow_rate_ml_min, 0.01)
+        best_rts_sorted = sorted(best_rts, key=lambda x: x[1])
+        eval_result = evaluate_method(
+            [r[1] for r in best_rts_sorted],
+            [r[2] for r in best_rts_sorted],
+            best_gradient.get("gradient_table", [{}])[-1].get("time_s", t_total) if best_gradient else t_total,
+            t0_calc,
+            crit,
+        )
+        suitability_eval = eval_result.to_dict()
+
     return {
         "per_compound": per_compound,
         "gradient": best_gradient,
@@ -546,4 +666,148 @@ def optimize_gradient_separation(
             * len(b_end_candidates)
             * len(time_candidates),
         },
+        "suitability": suitability_eval,
+    }
+
+
+def analyze_robustness(
+    smiles_list: list[str],
+    gradient_table: list[dict],
+    flow_rate_ml_min: float = 0.4,
+    ph: float = 2.7,
+    temperature_c: float = 30.0,
+    column_type: str = "C18",
+) -> dict[str, Any]:
+    """Analyze method robustness by perturbing pH, temperature, and flow.
+
+    For each perturbation (±5%), predicts RTs for all compounds and computes
+    the change in minimum pairwise resolution. Identifies which parameters
+    and compounds are most sensitive.
+    """
+    import math
+    from app.core.chem.parser import ChemParseError, parse_mol
+    from app.core.chem.logd import logd_at_ph
+    from app.core.rules.engine import suggest_method
+    from app.core.lss.gradient_sim import (
+        heuristic_lss_params,
+        predict_rt_from_gradient,
+    )
+    from app.core.lss.chromatogram import default_peak_width, resolution
+
+    # Parse compounds
+    compounds: list[dict[str, Any]] = []
+    for i, smi in enumerate(smiles_list):
+        try:
+            parsed = parse_mol(smi)
+        except ChemParseError:
+            continue
+        sugg = suggest_method(
+            parsed.mol,
+            ionization_mode="ESI+",
+            retention_goal="neutral",
+            gradient_time_min=20.0,
+            flow_rate_ml_min=flow_rate_ml_min,
+            column_type_override=column_type,
+        )
+        compounds.append({
+            "index": i,
+            "smiles": smi,
+            "mol": parsed.mol,
+            "logp": sugg.descriptors.logp,
+            "mw": sugg.descriptors.mw,
+            "tpsa": sugg.descriptors.tpsa,
+            "hbd": sugg.descriptors.hbd,
+            "hba": sugg.descriptors.hba,
+        })
+
+    if len(compounds) < 2:
+        return {
+            "perturbations": [],
+            "sensitivity_score": 0.0,
+            "most_sensitive_compound": -1,
+            "message": "Need at least 2 compounds for robustness analysis",
+        }
+
+    # van 't Hoff temperature factor
+    delta_h_over_r = 5000.0
+    t1 = 303.15
+
+    def predict_rts(perturbed_ph: float, perturbed_temp: float, perturbed_flow: float) -> list[float]:
+        rts = []
+        for c in compounds:
+            logd = logd_at_ph(c["mol"], perturbed_ph, c["logp"])
+            params = heuristic_lss_params(
+                logd,
+                mw=c["mw"],
+                tpsa=c["tpsa"],
+                hbd=c["hbd"],
+                hba=c["hba"],
+                column_type=column_type,
+            )
+            rt = predict_rt_from_gradient(params, gradient_table, flow_rate_ml_min=perturbed_flow)
+            # Temperature correction
+            t2 = perturbed_temp + 273.15
+            temp_factor = math.exp(delta_h_over_r * (1.0 / t1 - 1.0 / t2))
+            temp_factor = max(0.5, min(2.0, temp_factor))
+            rts.append(rt * temp_factor)
+        return rts
+
+    def min_resolution(rts: list[float]) -> float:
+        sorted_rts = sorted(rts)
+        min_rs = float("inf")
+        for j in range(len(sorted_rts) - 1):
+            w1 = default_peak_width(sorted_rts[j])
+            w2 = default_peak_width(sorted_rts[j + 1])
+            rs = resolution(sorted_rts[j], w1, sorted_rts[j + 1], w2)
+            if rs < min_rs:
+                min_rs = rs
+        return min_rs if min_rs != float("inf") else 0.0
+
+    # Baseline
+    baseline_rts = predict_rts(ph, temperature_c, flow_rate_ml_min)
+    baseline_min_res = min_resolution(baseline_rts)
+
+    # Perturbations: ±5% for each parameter
+    perturbations = []
+    perturbation_specs = [
+        ("pH", "+0.2", ph + 0.2, temperature_c, flow_rate_ml_min),
+        ("pH", "-0.2", ph - 0.2, temperature_c, flow_rate_ml_min),
+        ("Temperature", "+3°C", ph, temperature_c + 3, flow_rate_ml_min),
+        ("Temperature", "-3°C", ph, temperature_c - 3, flow_rate_ml_min),
+        ("Flow Rate", "+5%", ph, temperature_c, flow_rate_ml_min * 1.05),
+        ("Flow Rate", "-5%", ph, temperature_c, flow_rate_ml_min * 0.95),
+    ]
+
+    for param, delta, p_ph, p_temp, p_flow in perturbation_specs:
+        rts = predict_rts(p_ph, p_temp, p_flow)
+        min_res = min_resolution(rts)
+        change = min_res - baseline_min_res
+        perturbations.append({
+            "parameter": param,
+            "delta": delta,
+            "rts": [round(r, 2) for r in rts],
+            "min_resolution": round(min_res, 3),
+            "resolution_change": round(change, 3),
+        })
+
+    # Overall sensitivity score: average absolute resolution change
+    avg_change = sum(abs(p["resolution_change"]) for p in perturbations) / len(perturbations)
+    sensitivity_score = round(avg_change, 3)
+
+    # Find most sensitive compound: the one with largest RT variance across perturbations
+    rt_variances = []
+    for i in range(len(compounds)):
+        rts_for_compound = [p["rts"][i] for p in perturbations if i < len(p["rts"])]
+        if rts_for_compound:
+            mean_rt = sum(rts_for_compound) / len(rts_for_compound)
+            variance = sum((r - mean_rt) ** 2 for r in rts_for_compound) / len(rts_for_compound)
+            rt_variances.append((i, variance))
+    most_sensitive = max(rt_variances, key=lambda x: x[1])[0] if rt_variances else -1
+
+    return {
+        "perturbations": perturbations,
+        "sensitivity_score": sensitivity_score,
+        "most_sensitive_compound": most_sensitive,
+        "baseline_min_resolution": round(baseline_min_res, 3),
+        "baseline_rts": [round(r, 2) for r in baseline_rts],
     }

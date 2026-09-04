@@ -38,6 +38,69 @@ async def count_columns() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# F3: Tanaka Column Comparison
+# ---------------------------------------------------------------------------
+
+
+class TanakaParamsSchema(BaseModel):
+    column_name: str = ""
+    column_type: str = "C18"
+    k_pb: float = 0.0
+    alpha_ch2: float = 0.0
+    alpha_t_o: float = 0.0
+    alpha_c_p: float = 0.0
+    alpha_b_a_76: float = 0.0
+    alpha_b_a_27: float = 0.0
+
+
+class ColumnCompareRequest(BaseModel):
+    column_a: TanakaParamsSchema
+    column_b: TanakaParamsSchema
+
+
+class ColumnCompareAllRequest(BaseModel):
+    columns: list[TanakaParamsSchema]
+    reference: TanakaParamsSchema | None = None
+
+
+@router.get("/tanaka/reference")
+async def list_tanaka_reference() -> dict:
+    """List reference Tanaka parameters for common column types."""
+    from app.core.chem.column_comparison import REFERENCE_COLUMNS
+    return {
+        "reference_columns": {k: v.to_dict() for k, v in REFERENCE_COLUMNS.items()}
+    }
+
+
+@router.post("/tanaka/compare")
+async def compare_two_columns(data: ColumnCompareRequest) -> dict:
+    """Compare two columns using Tanaka parameters."""
+    from app.core.chem.column_comparison import TanakaParameters, compare_columns
+
+    a = TanakaParameters(**data.column_a.model_dump())
+    b = TanakaParameters(**data.column_b.model_dump())
+    result = compare_columns(a, b)
+    return result.to_dict()
+
+
+@router.post("/tanaka/compare-all")
+async def compare_all_columns(data: ColumnCompareAllRequest) -> dict:
+    """Compare all columns against a reference or pairwise."""
+    from app.core.chem.column_comparison import TanakaParameters, compare_all, cluster_columns
+
+    columns = [TanakaParameters(**c.model_dump()) for c in data.columns]
+    reference = TanakaParameters(**data.reference.model_dump()) if data.reference else None
+
+    comparisons = compare_all(columns, reference)
+    clusters = cluster_columns(columns)
+
+    return {
+        "comparisons": comparisons,
+        "clusters": clusters,
+    }
+
+
+# ---------------------------------------------------------------------------
 # PIRM retention prediction
 # ---------------------------------------------------------------------------
 

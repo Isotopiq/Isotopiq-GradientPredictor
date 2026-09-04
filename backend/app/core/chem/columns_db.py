@@ -40,6 +40,13 @@ _LIGAND_HYDRO = {
     "C18": 1.0, "C8": 0.56, "C4": 0.33, "C30": 1.67,
     "phenyl": 0.39, "PFP": 0.33, "HILIC": 0.0, "PGC": 2.0,
     "ion_pair": 0.5,
+    "CN": 0.22,       # cyano — short, polar ligand
+    "NH2": 0.15,      # amino — polar, used for HILIC/NP
+    "Diol": 0.20,     # diol — polar, mild RP/HILIC
+    "C1": 0.15,       # C1 — trimethylsilyl, minimal retention
+    "C6": 0.28,       # C6 — short chain
+    "SAX": 0.0,       # strong anion exchange
+    "SCX": 0.0,       # strong cation exchange
 }
 
 
@@ -600,6 +607,420 @@ _FAMILIES: list[ColumnFamily] = [
         "HPLC, HSS pentafluorophenyl, halogenated compounds, 100Å pore",
         {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
+    # --- XSelect HSS CN (cyano) ---
+    ColumnFamily("Waters", "XSelect HSS CN", "CN",
+        (1, 8), 45, "L10",
+        "HPLC, HSS cyano, alternate selectivity, 100Å pore, 155 m²/g",
+        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    # --- XBridge BEH Amide (HPLC HILIC) ---
+    ColumnFamily("Waters", "XBridge BEH Amide", "HILIC",
+        (2, 11), 90, "L68",
+        "HPLC, BEH amide, HILIC for polar compounds/sugars, 130Å pore, 12% carbon",
+        {3.5: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    # --- XBridge BEH C4 (HPLC, wide-pore for proteins) ---
+    ColumnFamily("Waters", "XBridge BEH C4", "C4",
+        (1, 12), 90, "L26",
+        "HPLC, BEH C4, wide-pore 300Å for proteins/peptides, less retentive",
+        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    # =======================================================================
+    # WATERS — XBridge Premier (2.5/3.5/5 µm, MaxPeak HPS hardware)
+    # =======================================================================
+
+    ColumnFamily("Waters", "XBridge Premier BEH C18", "C18",
+        (1, 12), 80, "L1",
+        "Premier HPLC, BEH C18, MaxPeak HPS, 130Å pore, 185 m²/g, 18% carbon",
+        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "XBridge Premier BEH C8", "C8",
+        (1, 12), 80, "L7",
+        "Premier HPLC, BEH C8, MaxPeak HPS, less retentive, 130Å pore",
+        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "XBridge Premier BEH Shield RP18", "C18",
+        (2, 11), 80, "L1",
+        "Premier HPLC, BEH Shield RP18, polar embedded, MaxPeak HPS, 130Å pore",
+        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "XBridge Premier BEH Phenyl", "phenyl",
+        (1, 12), 80, "L11",
+        "Premier HPLC, BEH Phenyl, aromatic selectivity, MaxPeak HPS, 130Å pore",
+        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "XBridge Premier BEH HILIC", "HILIC",
+        (1, 9), 45, "L3",
+        "Premier HPLC, BEH HILIC, unbonded, MaxPeak HPS, 130Å pore, polar compounds",
+        {2.5: _HILIC_CORESHELL_DIMS, 3.5: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    ColumnFamily("Waters", "XBridge Premier BEH Amide", "HILIC",
+        (2, 11), 90, "L68",
+        "Premier HPLC, BEH Amide, HILIC for sugars/carbohydrates, MaxPeak HPS, 130Å pore",
+        {2.5: _HILIC_CORESHELL_DIMS, 3.5: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    ColumnFamily("Waters", "XBridge Premier BEH C18 AX", "C18",
+        (2, 10), 80, "L78",
+        "Premier HPLC, BEH C18 AX, mixed-mode RP/anion-exchange, MaxPeak HPS, 130Å pore",
+        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    # =======================================================================
+    # WATERS — CORTECS (solid-core, 1.6/2.7 µm, 90/120Å)
+    # =======================================================================
+
+    ColumnFamily("Waters", "CORTECS C18", "C18",
+        (1, 8), 45, "L1",
+        "Solid-core UHPLC/HPLC, 90Å pore, 100 m²/g, C18, high efficiency, low backpressure",
+        {1.6: _UHPLC_DIMS, 2.7: _CORESHELL_DIMS}),
+
+    ColumnFamily("Waters", "CORTECS C18+", "C18",
+        (1, 8), 45, "L1",
+        "Solid-core, charged surface (CSH), 90Å pore, improved peak shape for bases, 100 m²/g",
+        {1.6: _UHPLC_DIMS, 2.7: _CORESHELL_DIMS}),
+
+    ColumnFamily("Waters", "CORTECS T3", "C18",
+        (2, 8), 45, "L1",
+        "Solid-core, T3 bonded, 120Å pore, 100% aqueous compatible, polar analytes, 115 m²/g",
+        {1.6: _UHPLC_DIMS, 2.7: _CORESHELL_DIMS}),
+
+    ColumnFamily("Waters", "CORTECS Shield RP18", "C18",
+        (1, 8), 45, "L1",
+        "Solid-core, Shield RP18, polar embedded, 90Å pore, alternate selectivity for phenolics",
+        {1.6: _UHPLC_DIMS, 2.7: _CORESHELL_DIMS}),
+
+    ColumnFamily("Waters", "CORTECS C8", "C8",
+        (1, 8), 45, "L7",
+        "Solid-core, C8, 90Å pore, less retentive, faster elution",
+        {1.6: _UHPLC_DIMS, 2.7: _CORESHELL_DIMS}),
+
+    ColumnFamily("Waters", "CORTECS Phenyl", "phenyl",
+        (1, 8), 45, "L11",
+        "Solid-core, phenyl, 90Å pore, aromatic selectivity, pi-pi interactions",
+        {1.6: _UHPLC_DIMS, 2.7: _CORESHELL_DIMS}),
+
+    ColumnFamily("Waters", "CORTECS HILIC", "HILIC",
+        (1, 9), 40, "L3",
+        "Solid-core, unbonded HILIC silica, 90Å pore, polar compounds, sugars",
+        {1.6: _HILIC_CORESHELL_DIMS, 2.7: _HILIC_CORESHELL_DIMS}),
+
+    # =======================================================================
+    # WATERS — CORTECS Premier (MaxPeak HPS hardware)
+    # =======================================================================
+
+    ColumnFamily("Waters", "CORTECS Premier C18", "C18",
+        (1, 8), 45, "L1",
+        "Premier solid-core, C18, MaxPeak HPS, 90Å pore, low adsorption",
+        {1.6: _UHPLC_DIMS, 2.7: _CORESHELL_DIMS}),
+
+    ColumnFamily("Waters", "CORTECS Premier C18+", "C18",
+        (1, 8), 45, "L1",
+        "Premier solid-core, C18+ charged surface, MaxPeak HPS, 90Å pore",
+        {1.6: _UHPLC_DIMS, 2.7: _CORESHELL_DIMS}),
+
+    ColumnFamily("Waters", "CORTECS Premier T3", "C18",
+        (2, 8), 45, "L1",
+        "Premier solid-core, T3, MaxPeak HPS, 120Å pore, 100% aqueous compatible",
+        {1.6: _UHPLC_DIMS, 2.7: _CORESHELL_DIMS}),
+
+    ColumnFamily("Waters", "CORTECS Premier Shield RP18", "C18",
+        (1, 8), 45, "L1",
+        "Premier solid-core, Shield RP18, MaxPeak HPS, 90Å pore, polar embedded",
+        {1.6: _UHPLC_DIMS, 2.7: _CORESHELL_DIMS}),
+
+    ColumnFamily("Waters", "CORTECS Premier Phenyl", "phenyl",
+        (1, 8), 45, "L11",
+        "Premier solid-core, Phenyl, MaxPeak HPS, 90Å pore, aromatic selectivity",
+        {1.6: _UHPLC_DIMS, 2.7: _CORESHELL_DIMS}),
+
+    ColumnFamily("Waters", "CORTECS Premier HILIC", "HILIC",
+        (1, 9), 40, "L3",
+        "Premier solid-core, HILIC, MaxPeak HPS, 90Å pore, polar compounds",
+        {1.6: _HILIC_CORESHELL_DIMS, 2.7: _HILIC_CORESHELL_DIMS}),
+
+    # =======================================================================
+    # WATERS — ACQUITY Premier BEH Amide / HILIC / Glycan (MaxPeak HPS)
+    # =======================================================================
+
+    ColumnFamily("Waters", "ACQUITY Premier BEH Amide", "HILIC",
+        (1, 12), 60, "L68",
+        "Premier UPLC, BEH Amide, MaxPeak HPS, 130Å pore, polar metabolites, sugars",
+        {1.7: _HILIC_CORESHELL_DIMS}),
+
+    ColumnFamily("Waters", "ACQUITY Premier BEH HILIC", "HILIC",
+        (1, 9), 45, "L3",
+        "Premier UPLC, BEH HILIC, MaxPeak HPS, 130Å pore, unbonded, polar compounds",
+        {1.7: _HILIC_CORESHELL_DIMS}),
+
+    ColumnFamily("Waters", "ACQUITY Premier Glycan BEH Amide", "HILIC",
+        (1, 12), 60, "L68",
+        "Premier UPLC, Glycan BEH Amide, 130Å pore, 2-AB/RapiFluor-MS labeled glycans",
+        {1.7: _HILIC_CORESHELL_DIMS}),
+
+    ColumnFamily("Waters", "ACQUITY Premier Glycan BEH C18 AX", "C18",
+        (2, 10), 60, "L78",
+        "Premier UPLC, Glycan BEH C18 AX, mixed-mode RP/anion-exchange, acidic glycans, 130Å pore",
+        {1.7: _UHPLC_DIMS}),
+
+    ColumnFamily("Waters", "ACQUITY UPLC Glycan BEH Amide", "HILIC",
+        (1, 12), 60, "L68",
+        "UPLC, Glycan BEH Amide, 130Å pore, 12% carbon, labeled N-glycans",
+        {1.7: _HILIC_CORESHELL_DIMS}),
+
+    ColumnFamily("Waters", "ACQUITY UPLC Glycoprotein BEH Amide", "HILIC",
+        (1, 12), 60, "L68",
+        "UPLC, Glycoprotein BEH Amide, 300Å pore, intact glycoproteins/glycopeptides",
+        {1.7: _HILIC_CORESHELL_DIMS}),
+
+    # =======================================================================
+    # WATERS — ACQUITY UPLC Peptide columns
+    # =======================================================================
+
+    ColumnFamily("Waters", "ACQUITY UPLC Peptide BEH C18", "C18",
+        (1, 12), 60, "L1",
+        "UPLC, Peptide BEH C18, 130Å pore, 185 m²/g, optimized for peptide mapping",
+        {1.7: _UHPLC_DIMS}),
+
+    ColumnFamily("Waters", "ACQUITY UPLC Peptide BEH C18 (300Å)", "C18",
+        (1, 12), 60, "L1",
+        "UPLC, Peptide BEH C18, 300Å pore, 80 m²/g, large peptides/proteins",
+        {1.7: _UHPLC_DIMS}),
+
+    ColumnFamily("Waters", "ACQUITY UPLC Peptide CSH C18", "C18",
+        (1, 12), 60, "L1",
+        "UPLC, Peptide CSH C18, 130Å pore, charged surface, improved peak shape for peptides",
+        {1.7: _UHPLC_DIMS}),
+
+    ColumnFamily("Waters", "ACQUITY UPLC Peptide HSS T3", "C18",
+        (2, 11), 45, "L1",
+        "UPLC, Peptide HSS T3, 100Å pore, 100% aqueous, small polar peptides",
+        {1.8: _UHPLC_DIMS}),
+
+    ColumnFamily("Waters", "ACQUITY Premier Peptide BEH C18", "C18",
+        (1, 12), 60, "L1",
+        "Premier UPLC, Peptide BEH C18, MaxPeak HPS, 130Å pore, peptide mapping",
+        {1.7: _UHPLC_DIMS}),
+
+    ColumnFamily("Waters", "ACQUITY Premier Peptide CSH C18", "C18",
+        (1, 12), 60, "L1",
+        "Premier UPLC, Peptide CSH C18, MaxPeak HPS, 130Å pore, charged surface",
+        {1.7: _UHPLC_DIMS}),
+
+    # =======================================================================
+    # WATERS — ACQUITY UPLC HSS CN (cyano)
+    # =======================================================================
+
+    ColumnFamily("Waters", "ACQUITY UPLC HSS CN", "CN",
+        (1, 8), 45, "L10",
+        "UPLC, HSS cyano, 100Å pore, 155 m²/g, alternate selectivity, 8% carbon",
+        {1.8: _UHPLC_DIMS}),
+
+    # =======================================================================
+    # WATERS — Atlantis (HPLC, silica, polar compound retention)
+    # =======================================================================
+
+    ColumnFamily("Waters", "Atlantis T3", "C18",
+        (2, 8), 45, "L1",
+        "HPLC, T3 trifunctional bonding, 100Å pore, 230 m²/g, 14% carbon, 100% aqueous compatible",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "Atlantis dC18", "C18",
+        (3, 7), 45, "L1",
+        "HPLC, dC18 difunctional bonding, 100Å pore, 12% carbon, 100% aqueous compatible",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "Atlantis HILIC Silica", "HILIC",
+        (1, 5), 40, "L3",
+        "HPLC, unbonded HILIC silica, 100Å pore, 185 m²/g, polar compounds, >80% organic MP",
+        {3.0: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    # =======================================================================
+    # WATERS — SunFire (HPLC, silica, low pH stability, C18/C8)
+    # =======================================================================
+
+    ColumnFamily("Waters", "SunFire C18", "C18",
+        (1, 8), 60, "L1",
+        "HPLC, silica C18, 100Å pore, 335 m²/g, 18% carbon, difunctional, low pH stable, MS-friendly",
+        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "SunFire C8", "C8",
+        (1, 8), 60, "L7",
+        "HPLC, silica C8, 100Å pore, 335 m²/g, 12% carbon, less retentive, low pH stable",
+        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    # =======================================================================
+    # WATERS — Symmetry (HPLC, silica, general purpose, legacy methods)
+    # =======================================================================
+
+    ColumnFamily("Waters", "Symmetry C18", "C18",
+        (2, 8), 45, "L1",
+        "HPLC, silica C18, 100Å pore, 335 m²/g, 19% carbon, monofunctional, tightly controlled",
+        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "Symmetry C8", "C8",
+        (2, 8), 45, "L7",
+        "HPLC, silica C8, 100Å pore, 335 m²/g, 12% carbon, monofunctional, less retentive",
+        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "Symmetry Shield RP18", "C18",
+        (2, 8), 45, "L1",
+        "HPLC, Shield RP18, polar embedded, 100Å pore, superior peak shape for bases at neutral pH",
+        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "Symmetry Shield RP8", "C8",
+        (2, 8), 45, "L7",
+        "HPLC, Shield RP8, polar embedded, 100Å pore, less retentive, bases at neutral pH",
+        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "Symmetry300 C18", "C18",
+        (2, 8), 45, "L1",
+        "HPLC, wide-pore 300Å C18, 80 m²/g, 8.5% carbon, peptides and proteins",
+        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "Symmetry300 C4", "C4",
+        (2, 8), 45, "L26",
+        "HPLC, wide-pore 300Å C4, 80 m²/g, proteins/peptides, high recovery",
+        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    # =======================================================================
+    # WATERS — Spherisorb (HPLC, silica, 3/5/10 µm, legacy)
+    # =======================================================================
+
+    ColumnFamily("Waters", "Spherisorb ODS2 (C18)", "C18",
+        (2, 8), 45, "L1",
+        "HPLC, silica C18, 80Å pore, 180 m²/g, 12% carbon, monofunctional, legacy methods",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "Spherisorb ODS1 (C18)", "C18",
+        (2, 8), 45, "L1",
+        "HPLC, silica C18, 80Å pore, lighter bonding, 6% carbon, non-endcapped, polar selectivity",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "Spherisorb C8", "C8",
+        (2, 8), 45, "L7",
+        "HPLC, silica C8, 80Å pore, 180 m²/g, 6% carbon, less retentive",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "Spherisorb C6", "C6",
+        (2, 8), 45, "L15",
+        "HPLC, silica C6, 80Å pore, short chain, minimal retention",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "Spherisorb C1", "C1",
+        (2, 8), 45, "L13",
+        "HPLC, silica C1 (TMS), 80Å pore, very low retention, polar compounds",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "Spherisorb Phenyl", "phenyl",
+        (2, 8), 45, "L11",
+        "HPLC, silica phenyl, 80Å pore, 180 m²/g, aromatic selectivity",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "Spherisorb CN", "CN",
+        (2, 8), 45, "L10",
+        "HPLC, silica cyano, 80Å pore, 180 m²/g, alternate selectivity, NP/RP",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "Spherisorb NH2", "NH2",
+        (2, 8), 45, "L8",
+        "HPLC, silica amino, 80Å pore, 180 m²/g, HILIC/sugar analysis, ion-exchange",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "Spherisorb SAX", "SAX",
+        (2, 8), 45, "L14",
+        "HPLC, strong anion exchange, 80Å pore, 180 m²/g, anionic compounds",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "Spherisorb SCX", "SCX",
+        (2, 8), 45, "L9",
+        "HPLC, strong cation exchange, 80Å pore, 180 m²/g, cationic compounds",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    # =======================================================================
+    # WATERS — Nova-Pak (HPLC, 4 µm, silica, legacy)
+    # =======================================================================
+
+    ColumnFamily("Waters", "Nova-Pak C18", "C18",
+        (2, 8), 45, "L1",
+        "HPLC, 4 µm silica C18, 60Å pore, 15% carbon, high efficiency, legacy methods",
+        {4.0: _HPLC_DIMS}),
+
+    ColumnFamily("Waters", "Nova-Pak C8", "C8",
+        (2, 8), 45, "L7",
+        "HPLC, 4 µm silica C8, 60Å pore, 7% carbon, less retentive",
+        {4.0: _HPLC_DIMS}),
+
+    ColumnFamily("Waters", "Nova-Pak Phenyl", "phenyl",
+        (2, 8), 45, "L11",
+        "HPLC, 4 µm silica phenyl, 60Å pore, 8% carbon, aromatic selectivity",
+        {4.0: _HPLC_DIMS}),
+
+    ColumnFamily("Waters", "Nova-Pak Cyano CN", "CN",
+        (2, 8), 45, "L10",
+        "HPLC, 4 µm silica cyano, 60Å pore, 4% carbon, alternate selectivity, NP/RP",
+        {4.0: _HPLC_DIMS}),
+
+    # =======================================================================
+    # WATERS — μBondapak (HPLC, 10 µm, silica, legacy)
+    # =======================================================================
+
+    ColumnFamily("Waters", "μBondapak C18", "C18",
+        (2, 8), 50, "L1",
+        "HPLC, 10 µm silica C18, 125Å pore, 10% carbon, legacy general-purpose",
+        {10.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "μBondapak Phenyl", "phenyl",
+        (2, 8), 50, "L11",
+        "HPLC, 10 µm silica phenyl, 125Å pore, legacy aromatic selectivity",
+        {10.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "μBondapak CN", "CN",
+        (2, 8), 50, "L10",
+        "HPLC, 10 µm silica cyano, 125Å pore, legacy alternate selectivity",
+        {10.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "μBondapak NH2", "NH2",
+        (2, 8), 50, "L8",
+        "HPLC, 10 µm silica amino, 125Å pore, legacy sugar/HILIC",
+        {10.0: _CONV_DIMS}),
+
+    # =======================================================================
+    # WATERS — XTerra (HPLC, first-gen hybrid, 3.5/5 µm, legacy)
+    # =======================================================================
+
+    ColumnFamily("Waters", "XTerra MS C18", "C18",
+        (1, 12), 80, "L1",
+        "HPLC, first-gen hybrid C18, 125Å pore, 15.5% carbon, MS-friendly, pH 1-12",
+        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "XTerra MS C8", "C8",
+        (1, 12), 80, "L7",
+        "HPLC, first-gen hybrid C8, 125Å pore, 13% carbon, less retentive, MS-friendly",
+        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "XTerra Phenyl", "phenyl",
+        (1, 12), 80, "L11",
+        "HPLC, first-gen hybrid phenyl, 125Å pore, aromatic selectivity, MS-friendly",
+        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "XTerra RP18", "C18",
+        (1, 12), 80, "L1",
+        "HPLC, first-gen hybrid RP18, polar embedded, 125Å pore, alternate selectivity",
+        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Waters", "XTerra RP8", "C8",
+        (1, 12), 80, "L7",
+        "HPLC, first-gen hybrid RP8, polar embedded, 125Å pore, less retentive",
+        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    # =======================================================================
+    # WATERS — AccQ-Tag Ultra (amino acid analysis, HILIC-like)
+    # =======================================================================
+
+    ColumnFamily("Waters", "AccQ-Tag Ultra C18", "C18",
+        (1, 8), 45, "L1",
+        "UPLC, AccQ-Tag Ultra, derivatized amino acid analysis, 1.7 µm, 100Å pore",
+        {1.7: _UHPLC_DIMS}),
+
     # =======================================================================
     # PHENOMENEX
     # =======================================================================
@@ -797,6 +1218,7 @@ def _infer_phase(fam: ColumnFamily) -> StationaryPhase:
     # Core-shell detection
     is_core_shell = any(k in name_lower for k in [
         "accucore", "poroshell", "kinetex", "core", "raptor", "arc",
+        "cortecs",  # Waters CORTECS solid-core
     ])
     particle_type = "core_shell" if is_core_shell else "fully_porous"
 
@@ -817,15 +1239,24 @@ def _infer_phase(fam: ColumnFamily) -> StationaryPhase:
     elif "120å" in notes_lower or "120 å" in notes_lower:
         pore_size = 120.0
         surface_area = 175.0
+    elif "125å" in notes_lower or "125 å" in notes_lower:
+        pore_size = 125.0
+        surface_area = 170.0
     elif "100å" in notes_lower or "100 å" in notes_lower:
         pore_size = 100.0
         surface_area = 230.0 if "hss" in name_lower else 200.0
     elif "95å" in notes_lower or "95 å" in notes_lower:
         pore_size = 95.0
         surface_area = 160.0
+    elif "60å" in notes_lower or "60 å" in notes_lower:
+        pore_size = 60.0
+        surface_area = 200.0
     elif "80å" in notes_lower or "80 å" in notes_lower:
         pore_size = 80.0
         surface_area = 130.0 if is_core_shell else 180.0
+    elif "90å" in notes_lower or "90 å" in notes_lower:
+        pore_size = 90.0
+        surface_area = 100.0 if is_core_shell else 160.0
     elif "110å" in notes_lower or "110 å" in notes_lower:
         pore_size = 110.0
         surface_area = 175.0
@@ -846,12 +1277,18 @@ def _infer_phase(fam: ColumnFamily) -> StationaryPhase:
     if chem == "C18":
         ligand_length = 18
         # Carbon load varies by pore size and bonding type
-        if pore_size <= 80:
+        if pore_size <= 60:
+            carbon_load = 10.0
+        elif pore_size <= 80:
             carbon_load = 9.0 if "sb" in name_lower else 10.0
+        elif pore_size <= 90:
+            carbon_load = 9.0  # CORTECS 90Å
         elif pore_size <= 100:
             carbon_load = 15.0 if "hss" in name_lower else 12.0
         elif pore_size <= 120:
             carbon_load = 18.0
+        elif pore_size <= 125:
+            carbon_load = 15.0  # XTerra/μBondapak 125Å
         elif pore_size <= 175:
             carbon_load = 20.0
         else:
@@ -886,6 +1323,33 @@ def _infer_phase(fam: ColumnFamily) -> StationaryPhase:
             carbon_load = 12.0
         elif "shim-pack" in name_lower:
             carbon_load = 15.0
+        # Waters-specific adjustments
+        elif "sunfire c18" in name_lower:
+            carbon_load = 18.0  # 100Å, 18% carbon per Waters spec
+        elif "symmetry c18" in name_lower and "300" not in name_lower:
+            carbon_load = 19.0  # 100Å, 19% carbon per Waters spec
+        elif "symmetry300" in name_lower:
+            carbon_load = 8.5  # 300Å, 8.5% carbon per Waters spec
+        elif "cortecs c18" in name_lower:
+            carbon_load = 9.0  # 90Å solid-core
+        elif "cortecs t3" in name_lower:
+            carbon_load = 12.0  # 120Å T3
+        elif "xterra ms c18" in name_lower:
+            carbon_load = 15.5  # 125Å, 15.5% carbon per Waters spec
+        elif "ubondapak c18" in name_lower or "μbondapak c18" in name_lower:
+            carbon_load = 10.0  # 125Å, 10% carbon per Waters spec
+        elif "nova-pak c18" in name_lower:
+            carbon_load = 15.0  # 60Å, 15% carbon per Waters spec
+        elif "spherisorb ods2" in name_lower:
+            carbon_load = 12.0  # 80Å, 12% carbon per Waters spec
+        elif "spherisorb ods1" in name_lower:
+            carbon_load = 6.0  # 80Å, 6% carbon, light bonding
+        elif "atlantis t3" in name_lower:
+            carbon_load = 14.0  # 100Å, 14% carbon per Waters spec
+        elif "atlantis dc18" in name_lower:
+            carbon_load = 12.0  # 100Å, 12% carbon per Waters spec
+        elif "accq-tag" in name_lower:
+            carbon_load = 15.0  # amino acid analysis column
         # Bonding density
         if "sb" in name_lower:
             bonding_density = 3.5  # monofunctional, sterically protected
@@ -918,6 +1382,55 @@ def _infer_phase(fam: ColumnFamily) -> StationaryPhase:
         carbon_load = 12.0
         bonding_density = 1.8  # large ligand, lower density
         hydro_idx = _LIGAND_HYDRO["C30"]
+
+    elif chem == "C4":
+        ligand_length = 4
+        carbon_load = 3.0 if pore_size >= 300 else 5.0
+        if "symmetry300" in name_lower or "300" in name_lower:
+            carbon_load = 3.0
+        bonding_density = 3.5
+        hydro_idx = _LIGAND_HYDRO["C4"]
+
+    elif chem == "C1":
+        ligand_length = 1
+        carbon_load = 2.0
+        bonding_density = 3.5
+        hydro_idx = _LIGAND_HYDRO["C1"]
+        endcapped = False
+
+    elif chem == "C6":
+        ligand_length = 6
+        carbon_load = 5.0
+        bonding_density = 3.5
+        hydro_idx = _LIGAND_HYDRO["C6"]
+
+    elif chem == "CN":
+        ligand_length = 2  # cyanoethyl
+        carbon_load = 4.0 if pore_size <= 100 else 6.0
+        bonding_density = 3.0
+        hydro_idx = _LIGAND_HYDRO["CN"]
+        endcapped = False
+
+    elif chem == "NH2":
+        ligand_length = 3  # aminopropyl
+        carbon_load = 4.0
+        bonding_density = 3.0
+        hydro_idx = _LIGAND_HYDRO["NH2"]
+        endcapped = False
+
+    elif chem == "Diol":
+        ligand_length = 3  # diol group
+        carbon_load = 5.0
+        bonding_density = 3.0
+        hydro_idx = _LIGAND_HYDRO["Diol"]
+        endcapped = False
+
+    elif chem in ("SAX", "SCX"):
+        ligand_length = 0
+        carbon_load = 0.0
+        bonding_density = 0.0
+        hydro_idx = _LIGAND_HYDRO[chem]
+        endcapped = False
 
     elif chem == "phenyl":
         ligand_length = 6

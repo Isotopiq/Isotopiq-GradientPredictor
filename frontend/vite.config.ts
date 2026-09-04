@@ -27,7 +27,11 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:18700',
+        // In Docker dev compose, the backend is at http://backend:18700
+        // On host dev, it's at http://localhost:18700
+        // Docker dev: backend service is at http://backend:18700 (set via VITE_PROXY_TARGET env)
+        // Host dev: defaults to http://localhost:18700
+        target: process.env.VITE_PROXY_TARGET || 'http://localhost:18700',
         changeOrigin: true,
       },
     },

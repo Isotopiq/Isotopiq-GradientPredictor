@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, Check, Plus, Trash2, RefreshCw, Layers, AlertTriangle, ListPlus, FolderOpen, X, Edit3, Pencil, FileText, LayoutTemplate, Zap } from 'lucide-react';
+import { Save, Check, Plus, Trash2, RefreshCw, Layers, AlertTriangle, ListPlus, FolderOpen, X, Edit3, Pencil, FileText, LayoutTemplate, Zap, ShieldCheck, FlaskConical, TrendingUp, BarChart3, Settings2 } from 'lucide-react';
 import { StructureInput } from '@/components/StructureInput';
 import { CompoundPicker } from '@/components/CompoundPicker';
 import { PropertyPanel } from '@/components/PropertyPanel';
@@ -12,7 +12,17 @@ import { ParameterSliders } from '@/components/ParameterSliders';
 import { MoleculeViewer } from '@/components/MoleculeViewer';
 import { PkaPlotter } from '@/components/PkaPlotter';
 import { DisclaimerTooltip } from '@/components/DisclaimerTooltip';
+import { SuitabilityCriteriaPanel } from '@/components/SuitabilityCriteriaPanel';
+import { DwellVolumeGuide } from '@/components/DwellVolumeGuide';
+import { PredictionEquationPanel } from '@/components/PredictionEquationPanel';
+import { ModelSelectionPanel } from '@/components/ModelSelectionPanel';
+import { PhSelectorPanel } from '@/components/PhSelectorPanel';
+import { ResolutionMap1D } from '@/components/ResolutionMap1D';
+import { ResolutionMap2D } from '@/components/ResolutionMap2D';
+import { TernaryPlot } from '@/components/TernaryPlot';
+import { MobilePhaseEditor } from '@/components/MobilePhaseEditor';
 import { methodsApi } from '@/api/methods';
+import { columnsApi } from '@/api/columns';
 import { compoundListsApi } from '@/api/compoundLists';
 import { compoundsApi } from '@/api/compounds';
 import { toast } from 'sonner';
@@ -43,6 +53,8 @@ const COLUMN_OPTIONS = [
   { value: 'phenyl', label: 'Phenyl — π-π selectivity (aromatics)' },
   { value: 'PFP', label: 'PFP — Pentafluorophenyl (polarizable/halogenated)' },
   { value: 'HILIC', label: 'HILIC — Hydrophilic (polar analytes)' },
+  { value: 'CN', label: 'Cyano (CN) — Alternate selectivity (NP/RP)' },
+  { value: 'NH2', label: 'Amino (NH2) — HILIC / sugar analysis' },
   { value: 'ion_pair', label: 'Ion-pair — Charged analytes' },
 ];
 
@@ -62,6 +74,21 @@ export function PredictorPage() {
   const [gradientTime, setGradientTime] = useState(20);
   const [ph, setPh] = useState(2.7);
   const [temperature, setTemperature] = useState(30);
+  // F1: Dwell/dead volume
+  const [dwellVolume, setDwellVolume] = useState<number | ''>('');
+  const [deadVolume, setDeadVolume] = useState<number | ''>('');
+  // F7: Suitability criteria
+  const [suitability, setSuitability] = useState({
+    min_resolution: 1.5,
+    max_run_time_min: 60,
+    min_k: 0.5,
+    max_k: 20,
+  });
+  const [suitabilityEval, setSuitabilityEval] = useState<{
+    overall_score: number;
+    all_passed: boolean;
+    criteria: Array<{ name: string; passed: boolean; value: number; target: string; detail: string }>;
+  } | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [showSaveMethod, setShowSaveMethod] = useState(false);
@@ -70,10 +97,22 @@ export function PredictorPage() {
 
   // Column override + multi-compound state
   const [columnChoice, setColumnChoice] = useState('');
+  const [commercialColumnId, setCommercialColumnId] = useState<string | null>(null);
+  const [columnSearch, setColumnSearch] = useState('');
+  const [showColumnPicker, setShowColumnPicker] = useState(false);
   const [multiResult, setMultiResult] = useState<MultiCompoundSuggestion | null>(null);
   const [recalculating, setRecalculating] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
   const [autoAdjustGradient, setAutoAdjustGradient] = useState(false);
+  const [predictionConfidence, setPredictionConfidence] = useState<{ confidence: number; extrapolating: boolean; method: string } | null>(null);
+  const [robustnessResult, setRobustnessResult] = useState<{
+    perturbations: Array<{ parameter: string; delta: string; rts: number[]; min_resolution: number; resolution_change: number }>;
+    sensitivity_score: number;
+    most_sensitive_compound: number;
+    baseline_min_resolution: number;
+    baseline_rts: number[];
+  } | null>(null);
+  const [robustnessLoading, setRobustnessLoading] = useState(false);
 
   // Compound list save/load state
   const queryClient = useQueryClient();
@@ -83,10 +122,49 @@ export function PredictorPage() {
   const [listDescription, setListDescription] = useState('');
   const [editingListId, setEditingListId] = useState<string | null>(null);
 
+  // Right-panel tab state: 'results' | 'optimization' | 'advanced'
+  const [rightTab, setRightTab] = useState<'results' | 'optimization' | 'advanced'>('results');
+
   const { data: savedLists } = useQuery({
     queryKey: ['compound-lists'],
     queryFn: () => compoundListsApi.list(),
   });
+
+  // Debounced commercial column search
+  const [debouncedColumnSearch, setDebouncedColumnSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedColumnSearch(columnSearch), 300);
+    return () => clearTimeout(t);
+  }, [columnSearch]);
+
+  const { data: columnSearchResult } = useQuery({
+    queryKey: ['columns-picker', debouncedColumnSearch],
+    queryFn: () => columnsApi.list({
+      search: debouncedColumnSearch || undefined,
+      limit: 20,
+    }),
+    enabled: showColumnPicker,
+  });
+
+  // Load selected column details
+  const { data: selectedColumn } = useQuery({
+    queryKey: ['column-detail', commercialColumnId],
+    queryFn: () => columnsApi.get(commercialColumnId!),
+    enabled: !!commercialColumnId,
+  });
+
+  // Close column picker on outside click
+  useEffect(() => {
+    if (!showColumnPicker) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('input[placeholder*="Search 500+"]') && !target.closest('.absolute.z-50')) {
+        setShowColumnPicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showColumnPicker]);
 
   const saveListMutation = useMutation({
     mutationFn: (data: { name: string; description?: string; compound_ids: string[]; id?: string }) => {
@@ -349,6 +427,33 @@ export function PredictorPage() {
     }
   };
 
+  const handleRobustness = async () => {
+    const validSmiles = compounds
+      .map((c) => c.smiles)
+      .filter((s) => s && s.trim());
+    if (validSmiles.length < 2 || gradientTable.length === 0) {
+      toast.error('Need at least 2 compounds and a gradient to analyze robustness');
+      return;
+    }
+    setRobustnessLoading(true);
+    try {
+      const result = await methodsApi.analyzeRobustness({
+        smiles_list: validSmiles,
+        gradient_table: gradientTable,
+        flow_rate_ml_min: flowRate,
+        ph,
+        temperature_c: temperature,
+        column_type: columnChoice || 'C18',
+      });
+      setRobustnessResult(result);
+      toast.success(`Robustness: sensitivity score ${result.sensitivity_score.toFixed(2)}`);
+    } catch {
+      toast.error('Failed to analyze robustness');
+    } finally {
+      setRobustnessLoading(false);
+    }
+  };
+
   const handleOptimizeGradient = async () => {
     const validEntries = compounds
       .map((c, i) => ({ idx: i, smiles: c.smiles }))
@@ -366,8 +471,14 @@ export function PredictorPage() {
         flow_rate_ml_min: flowRate,
         ph,
         temperature_c: temperature,
+        suitability,
       });
       setMultiResult(result);
+      // F7: Capture suitability evaluation
+      const suitEval = (result as { suitability?: { overall_score: number; all_passed: boolean; criteria: Array<{ name: string; passed: boolean; value: number; target: string; detail: string }> } }).suitability;
+      if (suitEval) {
+        setSuitabilityEval(suitEval);
+      }
 
       // Apply the optimized gradient parameters
       if (result.gradient?.gradient_table?.length > 0) {
@@ -407,9 +518,15 @@ export function PredictorPage() {
     // Temperature effect on peak width: higher temp → narrower peaks
     // (van Deemter B-term dominates at higher temp; ~2% per 10°C)
     const tempWidthFactor = Math.max(0.5, 1.0 - (temperature - 30) * 0.02);
-    // Temperature effect on retention: higher temp → lower RT
-    // (~1.5% per 10°C, typical for RP-LC)
-    const tempRtFactor = Math.max(0.7, 1.0 - (temperature - 30) * 0.015);
+    // Temperature effect on retention via van 't Hoff equation:
+    // k(T2)/k(T1) = exp(ΔH/R * (1/T1 - 1/T2))
+    // ΔH/R ≈ 5000K typical for RP-LC retention
+    const deltaHOverR = 5000.0;
+    const t1 = 303.15; // 30°C reference
+    const t2 = temperature + 273.15;
+    const tempRtFactor = Math.max(0.5, Math.min(2.0,
+      Math.exp(deltaHOverR * (1.0 / t1 - 1.0 / t2))
+    ));
 
     // pH effect on effective logD using a practical ionization model.
     // Uses the first (most significant) pKa value. Most LC-MS analytes with
@@ -448,18 +565,22 @@ export function PredictorPage() {
           const simPeaks = await Promise.all(
             validEntries.map(async (pc, i) => {
               const entry = compounds[pc.index];
-              const baseLogP = pc.logp ?? entry?.compound?.logp ?? 2.0;
-              const effectiveLogP = adjustLogPForPh(baseLogP, pc.pka_values);
+              const smiles = entry?.smiles || pc.smiles || '';
               try {
                 const sim = await methodsApi.simulateGradient({
                   gradient_table: gradientTable,
                   flow_rate_ml_min: flowRate,
-                  logp: effectiveLogP,
+                  logp: pc.logp ?? entry?.compound?.logp ?? 2.0,
                   mw: pc.mw ?? entry?.compound?.mw ?? 200,
                   tpsa: pc.tpsa ?? entry?.compound?.tpsa ?? 0,
                   hbd: pc.hbd ?? 0,
                   hba: pc.hba ?? 0,
                   column_type: columnChoice || pc.column?.column_type || 'C18',
+                  column_id: commercialColumnId || undefined,
+                  smiles: smiles || undefined,
+                  ph,
+                  dwell_volume_ml: dwellVolume || undefined,
+                  dead_volume_ml: deadVolume || undefined,
                 });
                 return {
                   rt_s: sim.predicted_rt_s * tempRtFactor,
@@ -481,21 +602,31 @@ export function PredictorPage() {
           );
           peaks = simPeaks;
         } else {
-          // Single-compound: re-simulate with pH-adjusted logP + temperature
-          const baseLogP = suggestion?.descriptors.logp ?? activeCompound?.logp ?? 2.0;
-          const pkaValues = suggestion?.pka_values ?? activeCompound?.pka_values ?? undefined;
-          const effectiveLogP = adjustLogPForPh(baseLogP, pkaValues);
+          // Single-compound: re-simulate with server-side logD + temperature
           try {
             const sim = await methodsApi.simulateGradient({
               gradient_table: gradientTable,
               flow_rate_ml_min: flowRate,
-              logp: effectiveLogP,
+              logp: suggestion?.descriptors.logp ?? activeCompound?.logp ?? 2.0,
               mw: suggestion?.descriptors.mw ?? activeCompound?.mw ?? 200,
               tpsa: suggestion?.descriptors.tpsa ?? activeCompound?.tpsa ?? 0,
               hbd: suggestion?.descriptors.hbd ?? 0,
               hba: suggestion?.descriptors.hba ?? 0,
               column_type: columnChoice || suggestion?.column.column_type || 'C18',
+              column_id: commercialColumnId || undefined,
+              smiles: activeSmiles || undefined,
+              ph,
+              dwell_volume_ml: dwellVolume || undefined,
+              dead_volume_ml: deadVolume || undefined,
             });
+            // Track confidence from PIRM
+            if (sim.confidence != null) {
+              if (!cancelled) setPredictionConfidence({
+                confidence: sim.confidence,
+                extrapolating: sim.extrapolating ?? false,
+                method: sim.method,
+              });
+            }
             peaks = [{
               rt_s: sim.predicted_rt_s * tempRtFactor,
               width_s: undefined,
@@ -508,31 +639,22 @@ export function PredictorPage() {
           }
         }
 
-        // Auto-adjust gradient time: if any peak RT exceeds the gradient end,
-        // extend the gradient table to fit all peaks with a 10% margin.
+        // Auto-adjust: if any peak RT exceeds the gradient end, extend the
+        // chromatogram display window (NOT the gradient table) to fit all
+        // peaks with a 10% margin. Modifying the gradient table would change
+        // the separation and create a feedback loop (longer gradient → later
+        // RTs → extend again → infinite loop).
         let effectiveTotalTime = totalTime;
         if (autoAdjustGradient && peaks.length > 0) {
           const maxRt = Math.max(...peaks.map((p) => p.rt_s));
-          const gradientEnd = totalTime;
-          if (maxRt > gradientEnd * 0.9) {
-            // Extend gradient time to 110% of the latest peak RT
-            const newTotalTime = Math.ceil((maxRt * 1.1) / 60) * 60; // round up to next minute
-            effectiveTotalTime = newTotalTime;
-            // Rebuild gradient table with extended time
-            if (gradientTable.length >= 2) {
-              const bStart = gradientTable[0].percent_b;
-              const bEnd = gradientTable[gradientTable.length - 1].percent_b;
-              const newTable = [
-                { time_s: 0, percent_b: bStart },
-                { time_s: 60, percent_b: bStart },
-                { time_s: newTotalTime - 120, percent_b: bEnd },
-                { time_s: newTotalTime, percent_b: bEnd },
-              ];
-              if (!cancelled) {
-                setGradientTable(newTable);
-                setGradientTime(newTotalTime / 60);
-              }
-            }
+          if (maxRt > totalTime) {
+            // Extend the chromatogram window to 110% of the latest peak RT,
+            // capped at 90 minutes to prevent unbounded growth.
+            const newTotalTime = Math.min(
+              Math.ceil((maxRt * 1.1) / 60) * 60, // round up to next minute
+              90 * 60, // hard cap at 90 minutes
+            );
+            effectiveTotalTime = Math.max(newTotalTime, totalTime);
           }
         }
 
@@ -551,7 +673,7 @@ export function PredictorPage() {
       clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [multiResult, gradientTable, simResult, flowRate, ph, temperature, columnChoice, autoAdjustGradient]);
+  }, [multiResult, gradientTable, simResult, flowRate, ph, temperature, columnChoice, autoAdjustGradient, commercialColumnId]);
 
   const handleSaveMethod = async () => {
     if (gradientTable.length === 0 && !suggestion && !multiResult) {
@@ -587,6 +709,8 @@ export function PredictorPage() {
         temperature_c: temperature,
         gradient_table: gradientTable,
         compounds_smiles: compoundSmiles.length > 0 ? compoundSmiles : undefined,
+        dwell_volume_ml: dwellVolume || undefined,
+        dead_volume_ml: deadVolume || undefined,
       });
 
       // Optionally save as template too
@@ -703,10 +827,10 @@ export function PredictorPage() {
         )}
       </div>
 
-      {/* Main layout: left input sidebar + right workflow area */}
+      {/* Main layout: left setup column + right tabbed results */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        {/* ===== LEFT SIDEBAR: Structure Input ===== */}
-        <div className="xl:col-span-3 space-y-3">
+        {/* ===== LEFT COLUMN: Setup (sticky on large screens) ===== */}
+        <div className="xl:col-span-4 space-y-3 xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-2">
           <StructureInput
             onCompoundCreated={handleCompoundCreated}
             onSmilesChange={setActiveSmiles}
@@ -724,18 +848,20 @@ export function PredictorPage() {
             descriptors={suggestion?.descriptors}
             loading={suggesting}
           />
-        </div>
 
-        {/* ===== MAIN WORKFLOW AREA ===== */}
-        <div className="xl:col-span-9 space-y-4">
-          {/* --- Step 1: Compounds --- */}
+          {/* MS m/z prediction */}
+          {activeSmiles && (
+            <MsAdductPanel smiles={activeSmiles} />
+          )}
+
+          {/* --- Compounds in Method --- */}
           <div className="card-scientific">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent/10 text-xs font-bold text-accent">1</span>
-                <h3 className="text-sm font-semibold">Compounds in Method</h3>
+                <h3 className="text-sm font-semibold">Compounds</h3>
                 {compounds.length > 0 && (
-                  <span className="badge badge-info text-[10px]">{compounds.length} compound{compounds.length !== 1 ? 's' : ''}</span>
+                  <span className="badge badge-info text-[10px]">{compounds.length}</span>
                 )}
               </div>
               <div className="flex items-center gap-2">
@@ -755,12 +881,12 @@ export function PredictorPage() {
               <div className="mt-3 rounded-md border border-dashed border-border p-6 text-center">
                 <Layers size={24} className="mx-auto mb-2 text-muted-foreground/50" />
                 <p className="text-sm text-muted-foreground">
-                  No compounds added yet. Use the structure input on the left to search or draw a molecule,
+                  No compounds added yet. Use the structure input above to search or draw a molecule,
                   then click "Add Current" to build your method.
                 </p>
               </div>
             ) : (
-              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="mt-3 space-y-2">
                 {compounds.map((entry, i) => {
                   const pcEntry = multiResult?.per_compound?.find((pc) => pc.index === i);
                   const predictedRtMin = pcEntry?.predicted_rt_s != null
@@ -864,68 +990,146 @@ export function PredictorPage() {
             </div>
           )}
 
-          {/* --- Step 2: Method Configuration --- */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {/* Column + Recalculate */}
-            <div className="card-scientific">
-              <div className="flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent/10 text-xs font-bold text-accent">2</span>
-                <h3 className="text-sm font-semibold">Column & Optimization</h3>
-              </div>
-              <div className="mt-3 space-y-3">
-                <div>
-                  <label className="label">Column Choice</label>
-                  <select
-                    className="input mt-1"
-                    value={columnChoice}
-                    onChange={(e) => setColumnChoice(e.target.value)}
-                  >
-                    {COLUMN_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleRecalculate}
-                    disabled={recalculating || optimizing || compounds.length === 0}
-                    className="btn-primary flex-1"
-                  >
-                    <RefreshCw size={14} className={recalculating ? 'animate-spin' : ''} />
-                    {recalculating ? 'Recalculating...' : 'Recalculate'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleOptimizeGradient}
-                    disabled={optimizing || recalculating || compounds.length < 2}
-                    className="btn-outline"
-                    title="Grid-search for the gradient parameters that maximize minimum resolution between all compounds"
-                  >
-                    <Zap size={14} className={optimizing ? 'animate-pulse' : ''} />
-                    {optimizing ? 'Optimizing...' : 'Optimize Separation'}
-                  </button>
-                </div>
-                <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={autoAdjustGradient}
-                    onChange={(e) => setAutoAdjustGradient(e.target.checked)}
-                    className="rounded border-border"
-                  />
-                  Auto-adjust gradient time to fit all peaks
-                </label>
-                <p className="text-xs text-muted-foreground">
-                  "Recalculate" suggests a method for all compounds. "Optimize Separation" grid-searches %B start/end and gradient time to maximize resolution.
-                </p>
-              </div>
+          {/* --- Column & Optimization --- */}
+          <div className="card-scientific">
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent/10 text-xs font-bold text-accent">2</span>
+              <h3 className="text-sm font-semibold">Column & Optimization</h3>
             </div>
+            <div className="mt-3 space-y-3">
+              <div>
+                <label className="label">Column Type</label>
+                <select
+                  className="input mt-1"
+                  value={columnChoice}
+                  onChange={(e) => setColumnChoice(e.target.value)}
+                >
+                  {COLUMN_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
 
-            {/* Method Suggestion */}
-            <MethodSuggestionCard suggestion={suggestion} loading={suggesting} />
+              {/* Commercial column picker */}
+              <div>
+                <label className="label">Commercial Column (for PIRM physics-informed model)</label>
+                {commercialColumnId && selectedColumn ? (
+                  <div className="mt-1 rounded border border-border bg-muted/30 p-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 text-xs">
+                        <span className="font-medium">{selectedColumn.brand} {selectedColumn.name}</span>
+                        <span className="text-muted-foreground ml-1">
+                          {selectedColumn.particle_size_um}µm {selectedColumn.length_mm}×{selectedColumn.inner_diameter_mm}mm
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { setCommercialColumnId(null); }}
+                        className="text-muted-foreground hover:text-destructive"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                    {selectedColumn.stationary_phase && (
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        C:{selectedColumn.stationary_phase.carbon_load_pct}% •
+                        Bond: {selectedColumn.stationary_phase.bonding_density_umol_m2}µmol/m² •
+                        Pore: {selectedColumn.stationary_phase.pore_size_a}Å •
+                        {selectedColumn.stationary_phase.endcapped ? ' Endcapped' : ' Non-endcapped'}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="relative mt-1">
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="Search 500+ columns (e.g., BEH C18, Poroshell, Hypersil)..."
+                      value={columnSearch}
+                      onChange={(e) => {
+                        setColumnSearch(e.target.value);
+                        setShowColumnPicker(true);
+                      }}
+                      onFocus={() => setShowColumnPicker(true)}
+                    />
+                    {showColumnPicker && columnSearchResult && columnSearchResult.columns.length > 0 && (
+                      <div className="absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded border border-border bg-card shadow-lg">
+                        {columnSearchResult.columns.map((col) => (
+                          <button
+                            key={col.id}
+                            type="button"
+                            className="flex w-full items-center justify-between px-3 py-2 text-xs hover:bg-muted"
+                            onClick={() => {
+                              setCommercialColumnId(col.id);
+                              setShowColumnPicker(false);
+                              setColumnSearch('');
+                              // Also set the generic column type to match
+                              if (['C18', 'C8', 'C4', 'phenyl', 'PFP', 'HILIC', 'CN', 'NH2'].includes(col.chemistry)) {
+                                setColumnChoice(col.chemistry);
+                              }
+                            }}
+                          >
+                            <span>
+                              <span className="font-medium">{col.brand} {col.name}</span>
+                              <span className="text-muted-foreground ml-1">
+                                {col.particle_size_um}µm {col.length_mm}×{col.inner_diameter_mm}mm
+                              </span>
+                            </span>
+                            <span className="badge badge-info text-xs">{col.chemistry}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleRecalculate}
+                  disabled={recalculating || optimizing || compounds.length === 0}
+                  className="btn-primary flex-1"
+                >
+                  <RefreshCw size={14} className={recalculating ? 'animate-spin' : ''} />
+                  {recalculating ? 'Recalculating...' : 'Recalculate'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOptimizeGradient}
+                  disabled={optimizing || recalculating || compounds.length < 2}
+                  className="btn-outline"
+                  title="Grid-search for the gradient parameters that maximize minimum resolution between all compounds"
+                >
+                  <Zap size={14} className={optimizing ? 'animate-pulse' : ''} />
+                  {optimizing ? 'Optimizing...' : 'Optimize'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRobustness}
+                  disabled={robustnessLoading || compounds.length < 2}
+                  className="btn-outline"
+                  title="Analyze how small changes in pH, temperature, and flow affect separation"
+                >
+                  <ShieldCheck size={14} className={robustnessLoading ? 'animate-pulse' : ''} />
+                  {robustnessLoading ? 'Analyzing...' : 'Robustness'}
+                </button>
+              </div>
+              <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoAdjustGradient}
+                  onChange={(e) => setAutoAdjustGradient(e.target.checked)}
+                  className="rounded border-border"
+                />
+                Auto-adjust gradient time to fit all peaks
+              </label>
+              <p className="text-xs text-muted-foreground">
+                "Recalculate" suggests a method for all compounds. "Optimize" grid-searches %B start/end and gradient time to maximize resolution.
+              </p>
+            </div>
           </div>
 
-          {/* Parameter Sliders — full width row */}
+          {/* Parameter Sliders */}
           <ParameterSliders
             gradientTable={gradientTable}
             logp={logp}
@@ -941,85 +1145,341 @@ export function PredictorPage() {
             onSimulateResult={setSimResult}
           />
 
-          {/* --- Step 3: Results --- */}
-          {/* Resolution Analysis */}
-          {multiResult && multiResult.resolution_matrix.length > 0 && (
-            <div className="card-scientific">
-              <div className="flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent/10 text-xs font-bold text-accent">3</span>
-                <h3 className="text-sm font-semibold">Resolution Analysis</h3>
-                {multiResult.co_elution_count > 0 ? (
-                  <span className="badge badge-warning text-[10px]">
-                    {multiResult.co_elution_count} co-elution risk(s)
-                  </span>
-                ) : (
-                  <span className="badge badge-success text-[10px]">All resolved</span>
-                )}
+          {/* System Volumes */}
+          <div className="card-scientific">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold">System Volumes</h3>
+              <span className="text-[10px] text-muted-foreground">Dwell & dead volume improve accuracy</span>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-4">
+              <label className="block">
+                <span className="text-xs text-muted-foreground">Dwell Volume (mL)</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="e.g. 0.5"
+                  value={dwellVolume}
+                  onChange={(e) => setDwellVolume(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                  className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1 text-sm"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs text-muted-foreground">Dead Volume (mL)</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="e.g. 0.6"
+                  value={deadVolume}
+                  onChange={(e) => setDeadVolume(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                  className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1 text-sm"
+                />
+              </label>
+            </div>
+            {(dwellVolume !== '' || deadVolume !== '') && (
+              <p className="mt-2 text-[10px] text-muted-foreground">
+                {dwellVolume !== '' && `Dwell: gradient delayed by ${(dwellVolume / flowRate).toFixed(1)} min. `}
+                {deadVolume !== '' && `Dead: t0 = ${(deadVolume / flowRate).toFixed(1)} min.`}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* ===== RIGHT COLUMN: Tabbed Results & Tools ===== */}
+        <div className="xl:col-span-8 space-y-4">
+          {/* Tab bar */}
+          <div className="flex items-center gap-1 rounded-lg border border-border bg-card p-1">
+            <button
+              onClick={() => setRightTab('results')}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${rightTab === 'results' ? 'bg-accent text-white' : 'text-muted-foreground hover:bg-muted'}`}
+            >
+              <BarChart3 size={14} /> Results
+            </button>
+            <button
+              onClick={() => setRightTab('optimization')}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${rightTab === 'optimization' ? 'bg-accent text-white' : 'text-muted-foreground hover:bg-muted'}`}
+            >
+              <TrendingUp size={14} /> Optimization
+            </button>
+            <button
+              onClick={() => setRightTab('advanced')}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${rightTab === 'advanced' ? 'bg-accent text-white' : 'text-muted-foreground hover:bg-muted'}`}
+            >
+              <FlaskConical size={14} /> Advanced Tools
+            </button>
+          </div>
+
+          {/* --- Results Tab --- */}
+          {rightTab === 'results' && (
+            <div className="space-y-4">
+              <MethodSuggestionCard suggestion={suggestion} loading={suggesting} />
+
+              {/* Charts: Gradient + Chromatogram side by side */}
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <GradientChart
+                  gradientTable={gradientTable}
+                  predictedRtS={simResult?.predicted_rt_s}
+                  rtMarkers={chromatogram?.peaks?.map((p) => ({
+                    rt_s: p.rt_s,
+                    label: p.label,
+                    color: p.color || undefined,
+                  }))}
+                />
+                <ChromatogramPreview chromatogram={chromatogram} loading={suggesting} />
               </div>
-              <div className="mt-3 overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-border text-left text-muted-foreground">
-                      <th className="py-1.5 pr-3">Pair</th>
-                      <th className="py-1.5 pr-3">RT A (min)</th>
-                      <th className="py-1.5 pr-3">RT B (min)</th>
-                      <th className="py-1.5 pr-3">Resolution (Rs)</th>
-                      <th className="py-1.5">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {multiResult.resolution_matrix.map((pair, idx) => {
-                      const a = multiResult.per_compound[pair.compound_a];
-                      const b = multiResult.per_compound[pair.compound_b];
-                      return (
-                        <tr key={idx} className="border-b border-border/50">
-                          <td className="py-1.5 pr-3 font-medium">
-                            {a?.name || `#${pair.compound_a + 1}`} ↔ {b?.name || `#${pair.compound_b + 1}`}
-                          </td>
-                          <td className="py-1.5 pr-3 tabular-nums">{(pair.rt_a / 60).toFixed(2)}</td>
-                          <td className="py-1.5 pr-3 tabular-nums">{(pair.rt_b / 60).toFixed(2)}</td>
-                          <td className="py-1.5 pr-3 tabular-nums font-medium">
-                            {pair.resolution.toFixed(2)}
-                          </td>
-                          <td className="py-1.5">
-                            {pair.co_elution_risk ? (
-                              <span className="badge badge-warning text-[10px]">Co-elution</span>
-                            ) : (
-                              <span className="badge badge-success text-[10px]">Resolved</span>
-                            )}
-                          </td>
+
+              {/* Prediction Confidence */}
+              {predictionConfidence && (
+                <div className="card-scientific">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-semibold">Prediction Confidence</span>
+                    <div className="flex-1">
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{
+                            width: `${predictionConfidence.confidence * 100}%`,
+                            backgroundColor:
+                              predictionConfidence.confidence >= 0.7 ? 'hsl(var(--success))'
+                                : predictionConfidence.confidence >= 0.4 ? 'hsl(var(--warning))'
+                                : 'hsl(var(--destructive))',
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <span className="text-xs tabular-nums text-muted-foreground">
+                      {(predictionConfidence.confidence * 100).toFixed(0)}%
+                    </span>
+                    {predictionConfidence.extrapolating && (
+                      <span className="badge badge-warning text-xs" title="This prediction is outside the model's training domain">
+                        <AlertTriangle size={10} className="mr-1" />
+                        Extrapolating
+                      </span>
+                    )}
+                    <span className="badge badge-info text-xs">
+                      {predictionConfidence.method === 'pirm' ? 'PIRM' : predictionConfidence.method === 'lss_fit' ? 'LSS Fit' : 'Heuristic'}
+                    </span>
+                  </div>
+                  {predictionConfidence.method === 'heuristic' && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Heuristic model — select a commercial column for physics-informed predictions (PIRM).
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Resolution Analysis */}
+              {multiResult && multiResult.resolution_matrix.length > 0 && (
+                <div className="card-scientific">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent/10 text-xs font-bold text-accent">3</span>
+                    <h3 className="text-sm font-semibold">Resolution Analysis</h3>
+                    {multiResult.co_elution_count > 0 ? (
+                      <span className="badge badge-warning text-[10px]">
+                        {multiResult.co_elution_count} co-elution risk(s)
+                      </span>
+                    ) : (
+                      <span className="badge badge-success text-[10px]">All resolved</span>
+                    )}
+                  </div>
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-border text-left text-muted-foreground">
+                          <th className="py-1.5 pr-3">Pair</th>
+                          <th className="py-1.5 pr-3">RT A (min)</th>
+                          <th className="py-1.5 pr-3">RT B (min)</th>
+                          <th className="py-1.5 pr-3">Resolution (Rs)</th>
+                          <th className="py-1.5">Status</th>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody>
+                        {multiResult.resolution_matrix.map((pair, idx) => {
+                          const a = multiResult.per_compound[pair.compound_a];
+                          const b = multiResult.per_compound[pair.compound_b];
+                          return (
+                            <tr key={idx} className="border-b border-border/50">
+                              <td className="py-1.5 pr-3 font-medium">
+                                {a?.name || `#${pair.compound_a + 1}`} ↔ {b?.name || `#${pair.compound_b + 1}`}
+                              </td>
+                              <td className="py-1.5 pr-3 tabular-nums">{(pair.rt_a / 60).toFixed(2)}</td>
+                              <td className="py-1.5 pr-3 tabular-nums">{(pair.rt_b / 60).toFixed(2)}</td>
+                              <td className="py-1.5 pr-3 tabular-nums font-medium">
+                                {pair.resolution.toFixed(2)}
+                              </td>
+                              <td className="py-1.5">
+                                {pair.co_elution_risk ? (
+                                  <span className="badge badge-warning text-[10px]">Co-elution</span>
+                                ) : (
+                                  <span className="badge badge-success text-[10px]">Resolved</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Robustness analysis results */}
+              {robustnessResult && (
+                <div className="card-scientific">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck size={16} className="text-accent" />
+                    <h3 className="text-sm font-semibold">Method Robustness Analysis</h3>
+                  </div>
+                  <div className="mt-2 grid grid-cols-3 gap-3">
+                    <div className="rounded border border-border bg-muted/30 p-2">
+                      <div className="text-xs text-muted-foreground">Sensitivity Score</div>
+                      <div className={`text-lg font-bold tabular-nums ${robustnessResult.sensitivity_score > 0.5 ? 'text-destructive' : robustnessResult.sensitivity_score > 0.2 ? 'text-warning' : 'text-success'}`}>
+                        {robustnessResult.sensitivity_score.toFixed(3)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">lower = more robust</div>
+                    </div>
+                    <div className="rounded border border-border bg-muted/30 p-2">
+                      <div className="text-xs text-muted-foreground">Baseline Min Rs</div>
+                      <div className="text-lg font-bold tabular-nums">{robustnessResult.baseline_min_resolution.toFixed(2)}</div>
+                      <div className="text-xs text-muted-foreground">at current conditions</div>
+                    </div>
+                    <div className="rounded border border-border bg-muted/30 p-2">
+                      <div className="text-xs text-muted-foreground">Most Sensitive</div>
+                      <div className="text-lg font-bold tabular-nums">#{robustnessResult.most_sensitive_compound + 1}</div>
+                      <div className="text-xs text-muted-foreground">compound</div>
+                    </div>
+                  </div>
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-border text-muted-foreground">
+                          <th className="py-1 text-left">Parameter</th>
+                          <th className="py-1 text-left">Delta</th>
+                          <th className="py-1 text-right">Min Rs</th>
+                          <th className="py-1 text-right">ΔRs</th>
+                          <th className="py-1 text-right">RTs (min)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {robustnessResult.perturbations.map((p, i) => (
+                          <tr key={i} className="border-b border-border/50">
+                            <td className="py-1">{p.parameter}</td>
+                            <td className="py-1 text-muted-foreground">{p.delta}</td>
+                            <td className="py-1 text-right tabular-nums">{p.min_resolution.toFixed(2)}</td>
+                            <td className={`py-1 text-right tabular-nums ${p.resolution_change < -0.1 ? 'text-destructive font-medium' : p.resolution_change > 0.1 ? 'text-success' : ''}`}>
+                              {p.resolution_change > 0 ? '+' : ''}{p.resolution_change.toFixed(3)}
+                            </td>
+                            <td className="py-1 text-right tabular-nums text-muted-foreground">
+                              {p.rts.map((r) => (r / 60).toFixed(2)).join(', ')}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Each row shows the effect of a ±5% perturbation. A negative ΔRs indicates the method loses resolution under that change.
+                  </p>
+                </div>
+              )}
+
+              {/* pKa plot */}
+              {activeSmiles && suggestion?.ionizable && (
+                <PkaPlotter smiles={activeSmiles} />
+              )}
+
+              {/* Disclaimer */}
+              <div className="pt-2">
+                <DisclaimerTooltip />
               </div>
             </div>
           )}
 
-          {/* Charts: Gradient + Chromatogram side by side */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <GradientChart
-              gradientTable={gradientTable}
-              predictedRtS={simResult?.predicted_rt_s}
-              rtMarkers={chromatogram?.peaks?.map((p) => ({
-                rt_s: p.rt_s,
-                label: p.label,
-                color: p.color || undefined,
-              }))}
-            />
-            <ChromatogramPreview chromatogram={chromatogram} loading={suggesting} />
-          </div>
+          {/* --- Optimization Tab --- */}
+          {rightTab === 'optimization' && (
+            <div className="space-y-4">
+              {/* F7: Suitability Criteria Panel */}
+              <SuitabilityCriteriaPanel
+                criteria={suitability}
+                onCriteriaChange={setSuitability}
+                evaluation={suitabilityEval}
+              />
 
-          {/* pKa plot full width */}
-          {activeSmiles && suggestion?.ionizable && (
-            <PkaPlotter smiles={activeSmiles} />
+              {/* F4: 1D Resolution Map */}
+              <ResolutionMap1D
+                smilesList={compounds.map(c => c.smiles).filter(s => s && s.trim())}
+                methodParams={{
+                  ph,
+                  temperature,
+                  flow_rate: flowRate,
+                  gradient_time: gradientTime,
+                  percent_b_start: gradientTable[0]?.percent_b,
+                  percent_b_end: gradientTable[gradientTable.length - 1]?.percent_b,
+                  column_type: columnChoice || undefined,
+                }}
+              />
+
+              {/* F5: 2D Resolution Map */}
+              <ResolutionMap2D
+                smilesList={compounds.map(c => c.smiles).filter(s => s && s.trim())}
+                methodParams={{
+                  ph,
+                  temperature,
+                  flow_rate: flowRate,
+                  gradient_time: gradientTime,
+                  percent_b_start: gradientTable[0]?.percent_b,
+                  percent_b_end: gradientTable[gradientTable.length - 1]?.percent_b,
+                  column_type: columnChoice || undefined,
+                }}
+              />
+
+              {/* F8: Ternary Solvent Optimization */}
+              <TernaryPlot
+                smilesList={compounds.map(c => c.smiles).filter(s => s && s.trim())}
+                methodParams={{
+                  ph,
+                  temperature,
+                  flow_rate: flowRate,
+                  gradient_time: gradientTime,
+                  column_type: columnChoice || undefined,
+                }}
+              />
+            </div>
           )}
 
-          {/* Disclaimer */}
-          <div className="pt-2">
-            <DisclaimerTooltip />
-          </div>
+          {/* --- Advanced Tools Tab --- */}
+          {rightTab === 'advanced' && (
+            <div className="space-y-4">
+              {/* F6: Prediction Equation Mode — auto-populate SMILES + RTs from compound list */}
+              <PredictionEquationPanel
+                compoundsSmiles={compounds.map(c => c.smiles).filter(s => s && s.trim())}
+                compoundNames={compounds.map(c => c.name).filter(Boolean) as string[]}
+                compoundRts={compounds.map((c, i) => {
+                  const pc = multiResult?.per_compound?.find((p) => p.index === i);
+                  return pc?.predicted_rt_s != null ? pc.predicted_rt_s / 60 : null;
+                })}
+              />
+
+              {/* F9: Model Selection */}
+              <ModelSelectionPanel />
+
+              {/* F10: pH Selector with Ionic Forms */}
+              <PhSelectorPanel
+                activeSmiles={activeSmiles}
+                compoundsSmiles={compounds.map(c => c.smiles).filter(s => s && s.trim())}
+              />
+
+              {/* F15: Mobile Phase Editor with Buffer pH Calculator */}
+              <MobilePhaseEditor />
+
+              {/* F13: Dwell Volume Measurement Guide */}
+              <DwellVolumeGuide
+                onDwellVolumeCalculated={(v) => setDwellVolume(v)}
+                onDeadVolumeCalculated={(v) => setDeadVolume(v)}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -1260,6 +1720,55 @@ function CompoundListEntry({
       >
         <Trash2 size={14} />
       </button>
+    </div>
+  );
+}
+
+// MS m/z and adduct prediction panel (F9)
+function MsAdductPanel({ smiles }: { smiles: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['adducts', smiles],
+    queryFn: () => methodsApi.predictAdducts(smiles),
+    enabled: !!smiles,
+    staleTime: 60000,
+  });
+
+  if (isLoading) {
+    return <div className="card-scientific animate-pulse"><div className="h-4 w-24 rounded bg-muted" /><div className="mt-2 h-20 rounded bg-muted" /></div>;
+  }
+
+  if (!data) return null;
+
+  return (
+    <div className="card-scientific">
+      <h3 className="text-sm font-semibold">MS m/z Prediction</h3>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Monoisotopic mass: <span className="tabular-nums font-medium">{data.monoisotopic_mass.toFixed(4)} Da</span>
+      </p>
+      <div className="mt-2 grid grid-cols-2 gap-3">
+        <div>
+          <h4 className="text-xs font-semibold text-success">ESI+ (Positive)</h4>
+          <div className="mt-1 space-y-0.5">
+            {data.adducts.positive.map((a) => (
+              <div key={a.adduct} className="flex justify-between text-xs tabular-nums">
+                <span className="text-muted-foreground">{a.adduct}</span>
+                <span className="font-medium">{a.mz.toFixed(4)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div>
+          <h4 className="text-xs font-semibold text-destructive">ESI− (Negative)</h4>
+          <div className="mt-1 space-y-0.5">
+            {data.adducts.negative.map((a) => (
+              <div key={a.adduct} className="flex justify-between text-xs tabular-nums">
+                <span className="text-muted-foreground">{a.adduct}</span>
+                <span className="font-medium">{a.mz.toFixed(4)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { ColumnSpec, PIRMPredictionResult } from '@/types';
+import type { ColumnSpec, PIRMPredictionResult, TanakaParameters, ColumnComparisonResult } from '@/types';
 
 export interface ColumnListResponse {
   columns: ColumnSpec[];
@@ -50,6 +50,29 @@ export const columnsApi = {
       '/columns/predict-retention',
       params
     );
+    return data;
+  },
+
+  // F3: Tanaka Column Comparison
+  getTanakaReference: async () => {
+    const { data } = await apiClient.get<{ reference_columns: Record<string, TanakaParameters> }>(
+      '/columns/tanaka/reference',
+    );
+    return data;
+  },
+
+  compareColumns: async (a: TanakaParameters, b: TanakaParameters) => {
+    const { data } = await apiClient.post<ColumnComparisonResult>('/columns/tanaka/compare', {
+      column_a: a, column_b: b,
+    });
+    return data;
+  },
+
+  compareAllColumns: async (columns: TanakaParameters[], reference?: TanakaParameters) => {
+    const { data } = await apiClient.post<{
+      comparisons: ColumnComparisonResult[];
+      clusters: Record<string, string[]>;
+    }>('/columns/tanaka/compare-all', { columns, reference });
     return data;
   },
 };

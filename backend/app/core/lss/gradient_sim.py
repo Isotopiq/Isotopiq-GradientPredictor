@@ -173,40 +173,83 @@ def predict_rt_from_gradient(
     gradient_table: list[dict],
     flow_rate_ml_min: float = 0.4,
     column_void_volume_ml: float = 0.4,
+    dwell_volume_ml: float | None = None,
+    dead_volume_ml: float | None = None,
 ) -> float:
     """Predict RT for an arbitrary (possibly multi-segment) gradient.
 
-    gradient_table: list of {time_s, percent_b} points (piecewise linear).
-    """
-    t0 = 60.0 * column_void_volume_ml / max(flow_rate_ml_min, 0.01)
-    params_t0 = LSSParameters(log_k0=params.log_k0, s=params.s, t0=t0)
+    Uses numerical integration of the fundamental gradient equation:
+        tR = t0 + integral_0^tR [1 / (1 + k(phi(t)))] dt
 
-    # Convert to a single linear-gradient approximation using the steepest segment
+    This correctly handles multi-segment gradients (holds, ramps, steps)
+    instead of approximating with only the steepest segment.
+
+    gradient_table: list of {time_s, percent_b} points (piecewise linear).
+
+    F1: If dwell_volume_ml is provided, the gradient program is shifted by
+        t_dwell = dwell_volume_ml / flow_rate (the gradient reaches the
+        column head later than the pump program suggests).
+
+    F1: If dead_volume_ml is provided, it overrides the geometric t0
+        calculation (measured dead volume is more accurate than estimated).
+    """
+    # F1: Use measured dead volume for t0 if provided
+    if dead_volume_ml is not None and dead_volume_ml > 0:
+        t0 = 60.0 * dead_volume_ml / max(flow_rate_ml_min, 0.01)
+    else:
+        t0 = 60.0 * column_void_volume_ml / max(flow_rate_ml_min, 0.01)
+
     if not gradient_table:
         return t0
 
-    # Find the main ramp segment (largest %B change)
-    best_seg = None
-    best_dphi = -1.0
-    for i in range(len(gradient_table) - 1):
-        p0 = gradient_table[i]
-        p1 = gradient_table[i + 1]
-        dphi = abs(p1["percent_b"] - p0["percent_b"]) / 100.0
-        if dphi > best_dphi:
-            best_dphi = dphi
-            best_seg = (p0, p1)
+    # F1: Compute dwell time shift
+    t_dwell = 0.0
+    if dwell_volume_ml is not None and dwell_volume_ml > 0:
+        t_dwell = 60.0 * dwell_volume_ml / max(flow_rate_ml_min, 0.01)
 
-    if best_seg is None or best_dphi <= 0:
-        # Isocratic at the first point
-        phi = gradient_table[0]["percent_b"] / 100.0
-        k = 10 ** (params_t0.log_k0 - params_t0.s * phi)
-        return t0 * (1 + k)
+    log_k0 = params.log_k0
+    s = params.s
+    total_time = gradient_table[-1]["time_s"]
 
-    p0, p1 = best_seg
-    run = CalibrationRun(
-        gradient_time_s=p1["time_s"] - p0["time_s"],
-        phi_start=p0["percent_b"] / 100.0,
-        phi_end=p1["percent_b"] / 100.0,
-        observed_rt_s=0.0,
-    )
-    return p0["time_s"] + predict_rt_lss(params_t0, run)
+    def phi_at(t: float) -> float:
+        """Linear interpolation of phi (fraction B) at time t.
+
+        The gradient reaches the column head t_dwell seconds after the
+        pump program starts, so we look up phi at (t - t_dwell).
+        """
+        # Shift time by dwell time
+        effective_t = t - t_dwell
+        if effective_t <= gradient_table[0]["time_s"]:
+            return gradient_table[0]["percent_b"] / 100.0
+        for i in range(len(gradient_table) - 1):
+            t0_i = gradient_table[i]["time_s"]
+            t1_i = gradient_table[i + 1]["time_s"]
+            if t0_i <= effective_t <= t1_i:
+                p0 = gradient_table[i]["percent_b"] / 100.0
+                p1 = gradient_table[i + 1]["percent_b"] / 100.0
+                if t1_i == t0_i:
+                    return p1
+                frac = (effective_t - t0_i) / (t1_i - t0_i)
+                return p0 + frac * (p1 - p0)
+        return gradient_table[-1]["percent_b"] / 100.0
+
+    # Numerical integration: track fractional migration along column
+    dt = 0.5  # time step (s)
+    migration = 0.0
+    t = 0.0
+
+    while t < total_time + t0 * 2 + t_dwell:
+        phi = phi_at(min(t, total_time + t_dwell))
+        k = 10 ** (log_k0 - s * phi)
+        if k < 0.01:
+            k = 0.01
+        velocity = 1.0 / (t0 * (1.0 + k))
+        migration += velocity * dt
+        t += dt
+        if migration >= 1.0:
+            break
+
+    if migration < 1.0:
+        return total_time + t0 + t_dwell
+
+    return round(t, 2)
