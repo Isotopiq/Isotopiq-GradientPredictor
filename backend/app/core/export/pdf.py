@@ -1837,3 +1837,257 @@ def export_batch_analysis_pdf(
 
     doc.build(story)
     return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Preview report — generates a sample PDF with dummy data using current settings
+# ---------------------------------------------------------------------------
+
+def export_preview_pdf(settings: dict | None = None) -> bytes:
+    """Generate a sample PDF report showcasing all sections with dummy data.
+
+    This is used by the admin settings page to preview the report template
+    design (theme, branding, logo, cover page, etc.) without needing real
+    compound or method data.
+
+    Args:
+        settings: Dict with lab_name, lab_subtitle, report_footer, logo_bytes,
+                  report_title_prefix, cover_page_text, report_theme,
+                  include_cover_page_default.
+    """
+    s = settings or {}
+    theme_name = s.get("report_theme", "blue")
+    theme = _get_theme(theme_name)
+    mpl_theme = _get_mpl_theme(theme_name)
+
+    buf = io.BytesIO()
+    styles = _build_styles(theme)
+
+    lab_name = s.get("lab_name", "IsotopiQ")
+    lab_subtitle = s.get("lab_subtitle", "LC-MS Method Prediction Suite")
+    report_footer = s.get(
+        "report_footer",
+        "Predictions are estimates derived from physicochemical heuristics and statistical models. "
+        "They require experimental verification before use in regulated or production analytical work.",
+    )
+    logo_bytes = s.get("logo_bytes")
+    title_prefix = s.get("report_title_prefix") or ""
+    cover_text = s.get("cover_page_text") or ""
+
+    # Page template
+    page_w, page_h = A4
+    margin = 15 * mm
+    frame = Frame(margin, margin + 15 * mm, page_w - 2 * margin, page_h - 2 * margin - 25 * mm, id="main")
+
+    def _on_page(canvas, doc):
+        canvas.saveState()
+        canvas.setFillColor(theme["dark"])
+        canvas.rect(0, page_h - 20 * mm, page_w, 20 * mm, fill=1, stroke=0)
+        canvas.setFillColor(theme["accent"])
+        canvas.rect(0, page_h - 20 * mm - 2, page_w, 2, fill=1, stroke=0)
+        if logo_bytes:
+            try:
+                from reportlab.lib.utils import ImageReader
+                img_io = io.BytesIO(logo_bytes)
+                img = ImageReader(img_io)
+                iw, ih = img.getSize()
+                target_h = 12 * mm
+                target_w = iw * (target_h / ih)
+                if target_w > 60 * mm:
+                    target_w = 60 * mm
+                    target_h = ih * (target_w / iw)
+                canvas.drawImage(img, margin, page_h - 16 * mm,
+                                 width=target_w, height=target_h, mask="auto")
+            except Exception:
+                canvas.setFillColor(colors.white)
+                canvas.setFont("Helvetica-Bold", 14)
+                canvas.drawString(margin, page_h - 14 * mm, lab_name)
+        else:
+            canvas.setFillColor(colors.white)
+            canvas.setFont("Helvetica-Bold", 14)
+            canvas.drawString(margin, page_h - 14 * mm, lab_name)
+        canvas.setFillColor(colors.HexColor("#94a3b8"))
+        canvas.setFont("Helvetica", 8)
+        canvas.drawRightString(page_w - margin, page_h - 14 * mm, lab_subtitle)
+        canvas.setFillColor(theme["border"])
+        canvas.rect(margin, margin + 12 * mm, page_w - 2 * margin, 0.5, fill=1, stroke=0)
+        canvas.setFillColor(theme["muted"])
+        canvas.setFont("Helvetica-Oblique", 7)
+        from reportlab.lib.utils import simpleSplit
+        footer_lines = simpleSplit(report_footer, "Helvetica-Oblique", 7, page_w - 2 * margin)
+        y = margin + 8 * mm
+        for line in footer_lines:
+            canvas.drawString(margin, y, line)
+            y -= 9
+        canvas.setFont("Helvetica", 7)
+        canvas.setFillColor(theme["muted"])
+        canvas.drawRightString(
+            page_w - margin, margin + 4 * mm,
+            f"Page {doc.page} — Preview (sample data)",
+        )
+        canvas.restoreState()
+
+    doc = BaseDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=margin, rightMargin=margin,
+        topMargin=25 * mm, bottomMargin=margin,
+    )
+    doc.addPageTemplates([PageTemplate(id="main", frames=[frame], onPage=_on_page)])
+
+    story: list[Any] = []
+
+    # --- Cover page (if enabled) ---
+    if s.get("include_cover_page_default"):
+        story.append(Spacer(1, 60 * mm))
+        story.append(Paragraph(lab_name, styles["cover_title"]))
+        story.append(Paragraph(lab_subtitle, styles["cover_subtitle"]))
+        story.append(Spacer(1, 20 * mm))
+        if cover_text:
+            story.append(Paragraph(cover_text, styles["cover_body"]))
+        else:
+            story.append(Paragraph(
+                "This is a preview of the PDF report template. "
+                "All sections below contain sample data for design verification.",
+                styles["cover_body"],
+            ))
+        story.append(PageBreak())
+
+    # --- Title ---
+    title_text = "Sample Method Report"
+    if title_prefix:
+        title_text = f"{title_prefix} {title_text}"
+    story.append(Paragraph(title_text, styles["report_title"]))
+    story.append(Paragraph(
+        "Preview Report — Sample Data — Generated for Template Verification",
+        styles["report_subtitle"],
+    ))
+
+    # --- Compound Information ---
+    story.append(_section_bar("Compound Information", styles, theme))
+    story.append(Spacer(1, 4))
+    info_data = [
+        ["Name", "Caffeine"],
+        ["SMILES", "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"],
+        ["InChIKey", "RYYVLZVUVIJVGH-UHFFFAOYSA-N"],
+    ]
+    story.append(_data_table(info_data, [40 * mm, 130 * mm], styles, theme, mono_columns={1}))
+    story.append(Spacer(1, 8))
+
+    desc_data = [
+        ["Property", "Value", "Property", "Value"],
+        ["MW (g/mol)", "194.19", "HBD", "0"],
+        ["logP", "-0.07", "HBA", "6"],
+        ["TPSA (Å²)", "58.44", "Rotatable Bonds", "0"],
+        ["pKa (est.)", "14.0", "Aromatic Rings", "2"],
+    ]
+    story.append(_data_table(desc_data, [35 * mm, 50 * mm, 35 * mm, 50 * mm], styles, theme))
+    story.append(Spacer(1, 8))
+
+    # --- Method Parameters ---
+    story.append(_section_bar("Method Parameters", styles, theme))
+    story.append(Spacer(1, 4))
+    method_data = [
+        ["Parameter", "Value", "Parameter", "Value"],
+        ["Column Type", "C18", "pH", "2.70"],
+        ["Mobile Phase A", "Water + 0.1% Formic Acid", "Flow (mL/min)", "0.40"],
+        ["Mobile Phase B", "Acetonitrile", "Temp (°C)", "30"],
+        ["Additive", "0.1% Formic Acid", "Column Length", "100 mm"],
+    ]
+    story.append(_data_table(method_data, [35 * mm, 50 * mm, 35 * mm, 50 * mm], styles, theme))
+    story.append(Spacer(1, 8))
+
+    # --- Gradient Program ---
+    story.append(_section_bar("Gradient Program", styles, theme))
+    story.append(Spacer(1, 4))
+    grad_img = _render_gradient_chart(
+        [
+            {"time_s": 0, "percent_b": 5},
+            {"time_s": 60, "percent_b": 5},
+            {"time_s": 1200, "percent_b": 95},
+            {"time_s": 1260, "percent_b": 95},
+        ],
+        mpl_theme,
+    )
+    story.append(Image(io.BytesIO(grad_img), width=170 * mm, height=60 * mm))
+    story.append(Spacer(1, 8))
+
+    # --- Simulated XIC Chromatogram ---
+    story.append(_section_bar("Simulated XIC Chromatogram", styles, theme))
+    story.append(Spacer(1, 4))
+    sample_peaks = [
+        {"label": "Caffeine", "rt_s": 84, "width_s": 3, "height": 1.0, "tailing": 1.3},
+        {"label": "Aspirin", "rt_s": 136, "width_s": 5, "height": 0.85, "tailing": 1.4},
+        {"label": "Ibuprofen", "rt_s": 347, "width_s": 12, "height": 0.72, "tailing": 1.8},
+        {"label": "LongNameCompound", "rt_s": 724, "width_s": 26, "height": 0.6, "tailing": 2.4},
+    ]
+    chrom_img = _render_chromatogram(sample_peaks, 1260, mpl_theme)
+    story.append(Image(io.BytesIO(chrom_img), width=170 * mm, height=75 * mm))
+    story.append(Spacer(1, 8))
+
+    # --- Peak Table ---
+    peak_data = [
+        ["#", "Compound", "RT (min)", "Width (s)", "Tailing"],
+        ["1", "Caffeine", "1.41", "3.1", "1.34"],
+        ["2", "Aspirin", "2.27", "5.0", "1.43"],
+        ["3", "Ibuprofen", "5.78", "12.7", "1.78"],
+        ["4", "LongNameCompound", "12.06", "26.4", "2.41"],
+    ]
+    story.append(_data_table(peak_data, [10 * mm, 60 * mm, 30 * mm, 30 * mm, 30 * mm], styles, theme))
+    story.append(Spacer(1, 8))
+
+    # --- Resolution Matrix ---
+    story.append(_section_bar("Resolution Matrix (Rs)", styles, theme))
+    story.append(Spacer(1, 4))
+    res_data = [
+        ["Compound", "Caffeine", "Aspirin", "Ibuprofen", "LongName…"],
+        ["Caffeine", "—", "8.41", "20.56", "38.17"],
+        ["Aspirin", "", "—", "12.89", "33.32"],
+        ["Ibuprofen", "", "", "—", "19.26"],
+        ["LongName…", "", "", "", "—"],
+    ]
+    col_w = 34 * mm
+    story.append(_data_table(res_data, [col_w] * 5, styles, theme))
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(
+        "Rs > 1.5 indicates baseline resolution. Rs < 1.5 (marked with !) indicates co-elution risk.",
+        styles["body_muted"],
+    ))
+    story.append(Spacer(1, 8))
+
+    # --- Robustness ---
+    story.append(_section_bar("Robustness Analysis", styles, theme))
+    story.append(Spacer(1, 4))
+    pert_data = [
+        ["Perturbation", "Δ RT (s)", "Δ Rs (min)", "Impact"],
+        ["Flow +5%", "−4.2", "−0.31", "Low"],
+        ["Flow −5%", "+4.5", "+0.33", "Low"],
+        ["Temp +5°C", "−8.1", "−0.52", "Medium"],
+        ["Temp −5°C", "+8.8", "+0.56", "Medium"],
+        ["pH +0.2", "−12.3", "−1.12", "High"],
+    ]
+    story.append(_data_table(pert_data, [40 * mm, 30 * mm, 40 * mm, 40 * mm], styles, theme))
+    story.append(Spacer(1, 8))
+
+    # --- Method Transfer ---
+    story.append(_section_bar("Method Transfer", styles, theme))
+    story.append(Spacer(1, 4))
+    transfer_data = [
+        ["Parameter", "Value"],
+        ["Dwell Volume (mL)", "0.50"],
+        ["Dead Volume (mL)", "0.15"],
+        ["System Type", "UHPLC"],
+        ["Transfer Notes", "Gradient delay may require adjustment when transferring to HPLC systems."],
+    ]
+    story.append(_data_table(transfer_data, [80 * mm, 90 * mm], styles, theme))
+    story.append(Spacer(1, 14))
+
+    # --- Disclaimer ---
+    story.append(_section_bar("Disclaimer", styles, theme))
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(
+        report_footer,
+        styles["body_muted"],
+    ))
+
+    doc.build(story)
+    return buf.getvalue()

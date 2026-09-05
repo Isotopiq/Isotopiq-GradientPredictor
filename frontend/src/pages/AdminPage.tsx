@@ -2,12 +2,14 @@ import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminApi, type AppSettings, type AdminStats } from '@/api/admin';
 import { authApi } from '@/api/auth';
+import { exportApi } from '@/api/export';
 import { useAuth } from '@/context/AuthContext';
 import { toast } from 'sonner';
 import type { AdminUser, AuditLogEntry } from '@/types';
 import {
   Upload, Trash2, Save, Building2, Globe, FileText, Image as ImageIcon, AlertCircle,
   Users, ScrollText, BarChart3, Shield, ShieldOff, UserX, UserCheck, Search, Trash,
+  Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -129,6 +131,19 @@ export function AdminPage() {
       toast.success('Favicon removed');
     } catch {
       toast.error('Failed to remove favicon');
+    }
+  };
+
+  const [previewing, setPreviewing] = useState(false);
+  const handlePreviewReport = async () => {
+    setPreviewing(true);
+    try {
+      await exportApi.previewReport();
+      toast.success('Preview PDF downloaded');
+    } catch {
+      toast.error('Failed to generate preview — save settings first');
+    } finally {
+      setPreviewing(false);
     }
   };
 
@@ -531,6 +546,23 @@ export function AdminPage() {
                   />
                 </div>
               )}
+            </div>
+            <div className="mt-4 border-t border-border pt-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-sm font-medium">Preview Report Template</span>
+                  <p className="text-xs text-muted-foreground">
+                    Generate a sample PDF with all sections using current settings (save first to apply changes)
+                  </p>
+                </div>
+                <button
+                  onClick={handlePreviewReport}
+                  disabled={previewing}
+                  className="btn-outline btn-sm"
+                >
+                  <Eye size={14} /> {previewing ? 'Generating...' : 'Preview PDF'}
+                </button>
+              </div>
             </div>
           </div>
 

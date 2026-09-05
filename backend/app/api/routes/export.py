@@ -26,6 +26,7 @@ from app.core.export.pdf import (
     export_batch_analysis_pdf,
     export_column_comparison_pdf,
     export_method_pdf,
+    export_preview_pdf,
 )
 from app.deps import CurrentUser, DBSession
 from app.services import compound_service, method_service
@@ -327,4 +328,25 @@ async def export_batch_analysis(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",
         headers={"Content-Disposition": "attachment; filename=batch_analysis.pdf"},
+    )
+
+
+@router.get("/preview")
+async def get_report_preview(
+    db: DBSession,
+    current: CurrentUser,
+):
+    """Generate a preview PDF report with sample data using current admin settings.
+
+    Admin only — used by the admin settings page to preview the report template
+    design (theme, branding, logo, cover page, etc.).
+    """
+    if not current.is_admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin access required")
+    settings_dict = await _load_settings_dict(db)
+    pdf_bytes = export_preview_pdf(settings_dict)
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": "inline; filename=report_preview.pdf"},
     )

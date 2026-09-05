@@ -120,4 +120,10 @@ export const exportApi = {
     const resp = await apiClient.post('/export/batch-analysis', { ...data, sections }, { responseType: 'blob' });
     downloadBlob(resp.data, 'batch_analysis.pdf');
   },
+
+  // Report template preview (admin only) — opens in new tab
+  previewReport: async () => {
+    const resp = await apiClient.get('/export/preview', { responseType: 'blob' });
+    downloadBlob(resp.data, 'report_preview.pdf');
+  },
 };
