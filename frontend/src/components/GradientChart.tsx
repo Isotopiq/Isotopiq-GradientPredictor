@@ -45,16 +45,24 @@ export function GradientChart({ gradientTable, predictedRtS, rtMarkers }: Gradie
       : [];
 
   // Detect wash/re-equilibration phases for visual annotation
+  // New structure (7 points): [start, start-hold, ramp-end, end-hold, wash-hold, drop-back, reequil-hold]
+  // Old structure (6 points): [start, start-hold, ramp-end, end-hold, wash-drop, reequil-hold]
   const hasWash = gradientTable.length > 4 &&
     Math.abs(gradientTable[gradientTable.length - 1].percent_b - gradientTable[0].percent_b) < 0.1;
   const gradEndMin = hasWash
     ? (gradientTable[3]?.time_s ?? gradientTable[2]?.time_s ?? 0) / 60
     : (gradientTable[gradientTable.length - 1]?.time_s ?? 0) / 60;
+  // Wash hold ends at index 4 (new 7-point) or index 4 (old 6-point where it was the drop)
   const washEndMin = hasWash
     ? (gradientTable[4]?.time_s ?? 0) / 60
     : 0;
-  const reequilEndMin = hasWash
+  // Drop-back point: index 5 in new 7-point structure
+  const dropEndMin = hasWash && gradientTable.length > 6
     ? (gradientTable[5]?.time_s ?? 0) / 60
+    : washEndMin;
+  // Re-equilibration ends at last point
+  const reequilEndMin = hasWash
+    ? (gradientTable[gradientTable.length - 1]?.time_s ?? 0) / 60
     : 0;
 
   return (
@@ -72,7 +80,7 @@ export function GradientChart({ gradientTable, predictedRtS, rtMarkers }: Gradie
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
           {hasWash && (
             <>
-              {/* Wash phase shading (gradient end → wash return) */}
+              {/* Wash hold shading (gradient end → wash hold end) — high %B hold */}
               <ReferenceArea
                 x1={gradEndMin}
                 x2={washEndMin}
@@ -81,16 +89,16 @@ export function GradientChart({ gradientTable, predictedRtS, rtMarkers }: Gradie
                 stroke="hsl(var(--warning))"
                 strokeOpacity={0.2}
               />
-              {/* Re-equilibration phase shading (wash return → end) */}
+              {/* Re-equilibration shading (drop-back → end) — initial %B hold */}
               <ReferenceArea
-                x1={washEndMin}
+                x1={dropEndMin}
                 x2={reequilEndMin}
                 fill="hsl(var(--success))"
                 fillOpacity={0.08}
                 stroke="hsl(var(--success))"
                 strokeOpacity={0.2}
               />
-              {/* Label for wash phase */}
+              {/* Label for wash hold phase */}
               <ReferenceLine
                 x={(gradEndMin + washEndMin) / 2}
                 stroke="none"
@@ -104,7 +112,7 @@ export function GradientChart({ gradientTable, predictedRtS, rtMarkers }: Gradie
               />
               {/* Label for re-equilibration phase */}
               <ReferenceLine
-                x={(washEndMin + reequilEndMin) / 2}
+                x={(dropEndMin + reequilEndMin) / 2}
                 stroke="none"
                 label={{
                   value: 'Re-equil',

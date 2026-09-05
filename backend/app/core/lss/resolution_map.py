@@ -73,8 +73,8 @@ def _compute_rts_for_compounds(
     column_type: str,
 ) -> list[tuple[float, float]]:
     """Compute RTs for all compounds at given conditions. Returns [(rt, width), ...]."""
-    # Temperature factor
-    delta_h_over_r = 5000.0
+    # Temperature factor (negative: RP-LC retention is exothermic, higher T → lower k)
+    delta_h_over_r = -5000.0
     t1 = 303.15
     t2 = temperature + 273.15
     temp_factor = math.exp(delta_h_over_r * (1.0 / t1 - 1.0 / t2))

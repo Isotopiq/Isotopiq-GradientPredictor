@@ -120,8 +120,8 @@ def ternary_optimize(
     s_b = SOLVENT_STRENGTH.get(solvent_b.lower(), 1.0)
     s_c = SOLVENT_STRENGTH.get(solvent_c.lower(), 0.85)
 
-    # Temperature factor
-    delta_h_over_r = 5000.0
+    # Temperature factor (negative: RP-LC retention is exothermic, higher T → lower k)
+    delta_h_over_r = -5000.0
     t1 = 303.15
     t2 = temperature_c + 273.15
     temp_factor = math.exp(delta_h_over_r * (1.0 / t1 - 1.0 / t2))

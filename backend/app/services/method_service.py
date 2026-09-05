@@ -466,8 +466,9 @@ def optimize_gradient_separation(
         )
 
     # Temperature factor using van 't Hoff (see F8)
-    # ΔH/R ≈ 5000K typical for RP-LC; k(T2)/k(T1) = exp(ΔH/R * (1/T1 - 1/T2))
-    delta_h_over_r = 5000.0  # K
+    # ΔH/R ≈ -5000K for RP-LC (retention is exothermic: higher T → lower k → lower RT)
+    # k(T2)/k(T1) = exp(ΔH/R * (1/T1 - 1/T2))
+    delta_h_over_r = -5000.0  # K
     t1 = 303.15  # 30°C reference
     t2 = temperature_c + 273.15
     temp_rt_factor = math.exp(delta_h_over_r * (1.0 / t1 - 1.0 / t2))
@@ -728,8 +729,8 @@ def analyze_robustness(
             "message": "Need at least 2 compounds for robustness analysis",
         }
 
-    # van 't Hoff temperature factor
-    delta_h_over_r = 5000.0
+    # van 't Hoff temperature factor (negative: RP-LC retention is exothermic)
+    delta_h_over_r = -5000.0
     t1 = 303.15
 
     def predict_rts(perturbed_ph: float, perturbed_temp: float, perturbed_flow: float) -> list[float]:

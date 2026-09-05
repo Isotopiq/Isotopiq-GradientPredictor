@@ -520,8 +520,8 @@ export function PredictorPage() {
     const tempWidthFactor = Math.max(0.5, 1.0 - (temperature - 30) * 0.02);
     // Temperature effect on retention via van 't Hoff equation:
     // k(T2)/k(T1) = exp(ΔH/R * (1/T1 - 1/T2))
-    // ΔH/R ≈ 5000K typical for RP-LC retention
-    const deltaHOverR = 5000.0;
+    // ΔH/R ≈ -5000K for RP-LC (retention is exothermic: higher T → lower k → lower RT)
+    const deltaHOverR = -5000.0;
     const t1 = 303.15; // 30°C reference
     const t2 = temperature + 273.15;
     const tempRtFactor = Math.max(0.5, Math.min(2.0,

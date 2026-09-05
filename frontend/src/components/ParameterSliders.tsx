@@ -52,11 +52,14 @@ export function ParameterSliders({
         { time_s: tTotal, percent_b: newBEnd },
       ];
       if (withWash) {
-        // Wash step: linear drop from %B end back to %B start
+        // Wash hold: stay at high %B (end conditions) to flush strongly retained compounds
         const washEndS = tTotal + washMin * 60;
-        table.push({ time_s: washEndS, percent_b: newBStart });
+        table.push({ time_s: washEndS, percent_b: newBEnd });
+        // Quick drop back to initial %B (0.5 min)
+        const dropEndS = washEndS + 30;
+        table.push({ time_s: dropEndS, percent_b: newBStart });
         // Re-equilibration: hold at initial %B
-        const reequilEndS = washEndS + reequilMin * 60;
+        const reequilEndS = dropEndS + reequilMin * 60;
         table.push({ time_s: reequilEndS, percent_b: newBStart });
       }
       internalChange.current = true;
@@ -79,17 +82,20 @@ export function ParameterSliders({
     const hasWash = gradientTable.length > 4 && Math.abs(last.percent_b - first.percent_b) < 0.1;
     setBStart(first.percent_b);
     if (hasWash) {
-      // Points: [start, start-hold, end, end-hold, wash-return, reequil-hold]
+      // Points: [start, start-hold, ramp-end, end-hold, wash-hold, drop-back, reequil-hold]
+      // Index:   0      1            2          3          4          5           6
       const endIdx = 3;
       setBEnd(gradientTable[endIdx]?.percent_b ?? gradientTable[2]?.percent_b ?? 95);
       // Gradient time = time of the end-hold point (index 3)
       const gradEndS = gradientTable[3]?.time_s ?? gradientTable[2]?.time_s ?? 1200;
-      const washReturnS = gradientTable[4]?.time_s ?? gradEndS;
-      const reequilEndS = gradientTable[5]?.time_s ?? washReturnS;
+      // Wash hold ends at index 4, drop-back at index 5, re-equil ends at index 6
+      const washEndS = gradientTable[4]?.time_s ?? gradEndS;
+      const dropEndS = gradientTable[5]?.time_s ?? washEndS;
+      const reequilEndS = gradientTable[6]?.time_s ?? dropEndS;
       // Keep gradientTimeMin in sync with the actual gradient portion (not wash)
       onGradientTimeChange(Math.max(5, gradEndS / 60));
-      setWashTimeMin(Math.max(0.1, (washReturnS - gradEndS) / 60));
-      setReequilTimeMin(Math.max(0.1, (reequilEndS - washReturnS) / 60));
+      setWashTimeMin(Math.max(0.1, (washEndS - gradEndS) / 60));
+      setReequilTimeMin(Math.max(0.1, (reequilEndS - dropEndS) / 60));
       setWashStep(true);
     } else {
       // Table has no wash step — since wash is on by default, rebuild with wash added
@@ -258,10 +264,11 @@ export function ParameterSliders({
             />
             <div className="rounded-md bg-muted/40 p-2 text-[10px] text-muted-foreground">
               <strong>Gradient program:</strong> {bStart}% B → {bEnd}% B over {gradientTimeMin} min →
-              wash to {bStart}% B over {washTimeMin.toFixed(1)} min →
+              hold {bEnd}% B for {washTimeMin.toFixed(1)} min (wash) →
+              drop to {bStart}% B →
               hold {reequilTimeMin.toFixed(1)} min (re-equilibration)
               <br />
-              <strong>Total run time:</strong> {(gradientTimeMin + washTimeMin + reequilTimeMin).toFixed(1)} min
+              <strong>Total run time:</strong> {(gradientTimeMin + washTimeMin + 0.5 + reequilTimeMin).toFixed(1)} min
             </div>
           </div>
         )}
