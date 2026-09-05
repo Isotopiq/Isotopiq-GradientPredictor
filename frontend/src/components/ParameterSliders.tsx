@@ -82,10 +82,13 @@ export function ParameterSliders({
       // Points: [start, start-hold, end, end-hold, wash-return, reequil-hold]
       const endIdx = 3;
       setBEnd(gradientTable[endIdx]?.percent_b ?? gradientTable[2]?.percent_b ?? 95);
-      const tTotal = gradientTable[3]?.time_s ?? gradientTable[2]?.time_s ?? 1200;
-      const washReturnS = gradientTable[4]?.time_s ?? tTotal;
+      // Gradient time = time of the end-hold point (index 3)
+      const gradEndS = gradientTable[3]?.time_s ?? gradientTable[2]?.time_s ?? 1200;
+      const washReturnS = gradientTable[4]?.time_s ?? gradEndS;
       const reequilEndS = gradientTable[5]?.time_s ?? washReturnS;
-      setWashTimeMin(Math.max(0.1, (washReturnS - tTotal) / 60));
+      // Keep gradientTimeMin in sync with the actual gradient portion (not wash)
+      onGradientTimeChange(Math.max(5, gradEndS / 60));
+      setWashTimeMin(Math.max(0.1, (washReturnS - gradEndS) / 60));
       setReequilTimeMin(Math.max(0.1, (reequilEndS - washReturnS) / 60));
       setWashStep(true);
     } else {
@@ -95,6 +98,8 @@ export function ParameterSliders({
       const newTimeMin = Math.max(5, tTotal / 60);
       setBEnd(newBEnd);
       setWashStep(true);
+      // Keep gradientTimeMin in sync
+      onGradientTimeChange(newTimeMin);
       // Rebuild with wash enabled using the loaded gradient's parameters
       rebuildGradient(first.percent_b, newBEnd, newTimeMin, true, washTimeMin, reequilTimeMin);
     }

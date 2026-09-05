@@ -7,6 +7,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
+  ReferenceArea,
 } from 'recharts';
 import type { GradientPoint } from '@/types';
 
@@ -43,6 +44,19 @@ export function GradientChart({ gradientTable, predictedRtS, rtMarkers }: Gradie
       ? [{ rt_s: predictedRtS, label: 'RT', color: 'hsl(var(--warning))' }]
       : [];
 
+  // Detect wash/re-equilibration phases for visual annotation
+  const hasWash = gradientTable.length > 4 &&
+    Math.abs(gradientTable[gradientTable.length - 1].percent_b - gradientTable[0].percent_b) < 0.1;
+  const gradEndMin = hasWash
+    ? (gradientTable[3]?.time_s ?? gradientTable[2]?.time_s ?? 0) / 60
+    : (gradientTable[gradientTable.length - 1]?.time_s ?? 0) / 60;
+  const washEndMin = hasWash
+    ? (gradientTable[4]?.time_s ?? 0) / 60
+    : 0;
+  const reequilEndMin = hasWash
+    ? (gradientTable[5]?.time_s ?? 0) / 60
+    : 0;
+
   return (
     <div className="card">
       <h3 className="text-sm font-semibold">
@@ -56,6 +70,58 @@ export function GradientChart({ gradientTable, predictedRtS, rtMarkers }: Gradie
       <ResponsiveContainer width="100%" height={200} className="mt-2">
         <LineChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
+          {hasWash && (
+            <>
+              {/* Wash phase shading (gradient end → wash return) */}
+              <ReferenceArea
+                x1={gradEndMin}
+                x2={washEndMin}
+                fill="hsl(var(--warning))"
+                fillOpacity={0.08}
+                stroke="hsl(var(--warning))"
+                strokeOpacity={0.2}
+              />
+              {/* Re-equilibration phase shading (wash return → end) */}
+              <ReferenceArea
+                x1={washEndMin}
+                x2={reequilEndMin}
+                fill="hsl(var(--success))"
+                fillOpacity={0.08}
+                stroke="hsl(var(--success))"
+                strokeOpacity={0.2}
+              />
+              {/* Label for wash phase */}
+              <ReferenceLine
+                x={(gradEndMin + washEndMin) / 2}
+                stroke="none"
+                label={{
+                  value: 'Wash',
+                  fontSize: 9,
+                  fill: 'hsl(var(--warning))',
+                  position: 'insideTop',
+                  offset: 5,
+                }}
+              />
+              {/* Label for re-equilibration phase */}
+              <ReferenceLine
+                x={(washEndMin + reequilEndMin) / 2}
+                stroke="none"
+                label={{
+                  value: 'Re-equil',
+                  fontSize: 9,
+                  fill: 'hsl(var(--success))',
+                  position: 'insideTop',
+                  offset: 5,
+                }}
+              />
+              {/* Vertical line at gradient end */}
+              <ReferenceLine
+                x={gradEndMin}
+                stroke="hsl(var(--border))"
+                strokeDasharray="3 3"
+              />
+            </>
+          )}
           <XAxis
             dataKey="time"
             type="number"
