@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.audit_log import AuditLog
@@ -80,3 +80,10 @@ def audit_log_to_dict(log: AuditLog) -> dict:
         "ip_address": log.ip_address,
         "created_at": log.created_at.isoformat() if log.created_at else None,
     }
+
+
+async def clear_audit_logs(db: AsyncSession) -> int:
+    """Delete all audit log entries. Returns the number of deleted rows."""
+    result = await db.execute(delete(AuditLog))
+    await db.commit()
+    return result.rowcount or 0

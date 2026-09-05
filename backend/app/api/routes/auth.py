@@ -38,6 +38,13 @@ ALLOWED_PIC_TYPES = {"image/png", "image/jpeg", "image/webp"}
 
 @router.post("/register", response_model=TokenPair, status_code=status.HTTP_201_CREATED)
 async def register(data: UserRegister, db: DBSession) -> TokenPair:
+    # Check if registration is enabled
+    from app.models.app_settings import AppSettings
+    settings_result = await db.execute(select(AppSettings).limit(1))
+    app_settings = settings_result.scalar_one_or_none()
+    if app_settings is not None and not app_settings.registration_enabled:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Registration is currently disabled. Contact an administrator.")
+
     existing = await db.execute(select(User).where(User.email == data.email))
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")

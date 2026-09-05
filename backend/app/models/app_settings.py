@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import LargeBinary, String, Text
+from sqlalchemy import Boolean, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, Timestamped, UUIDPK
@@ -29,6 +29,9 @@ class AppSettings(Base, UUIDPK, Timestamped):
                 "They require experimental verification before use in regulated or production analytical work.",
     )
 
+    # Allow admin to disable new user registration
+    registration_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
     @classmethod
     def default(cls) -> "AppSettings":
         return cls(
@@ -36,4 +39,5 @@ class AppSettings(Base, UUIDPK, Timestamped):
             lab_subtitle="LC-MS Method Prediction Suite",
             report_footer="Predictions are estimates derived from physicochemical heuristics and statistical models. "
                           "They require experimental verification before use in regulated or production analytical work.",
+            registration_enabled=True,
         )

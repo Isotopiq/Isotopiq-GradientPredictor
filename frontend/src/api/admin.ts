@@ -9,6 +9,7 @@ export interface AppSettings {
   has_logo: boolean;
   logo_mime_type: string | null;
   report_footer: string;
+  registration_enabled: boolean;
 }
 
 export interface AdminStats {
@@ -22,6 +23,13 @@ export interface AdminStats {
 export const adminApi = {
   getSettings: async () => {
     const { data } = await apiClient.get<AppSettings>('/admin/settings');
+    return data;
+  },
+
+  getPublicSettings: async () => {
+    const { data } = await apiClient.get<{ registration_enabled: boolean; lab_name: string; lab_subtitle: string }>(
+      '/admin/public-settings',
+    );
     return data;
   },
 
@@ -67,6 +75,11 @@ export const adminApi = {
       '/admin/audit-logs',
       { params: { limit, offset, action: action || undefined } },
     );
+    return data;
+  },
+
+  clearAuditLogs: async () => {
+    const { data } = await apiClient.delete<{ deleted: number }>('/admin/audit-logs');
     return data;
   },
 

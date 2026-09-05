@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { Moon, Sun, Monitor, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
+import { adminApi } from '@/api/admin';
 
 type Mode = 'login' | 'register' | 'forgot';
 
@@ -16,9 +17,16 @@ export function AuthForms() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [forgotSent, setForgotSent] = useState(false);
+  const [registrationEnabled, setRegistrationEnabled] = useState(true);
   const { login, register, loading } = useAuth();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
+
+  useEffect(() => {
+    adminApi.getPublicSettings()
+      .then(s => setRegistrationEnabled(s.registration_enabled))
+      .catch(() => {});
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -201,15 +209,21 @@ export function AuthForms() {
           {mode !== 'forgot' && (
             <div className="mt-5 border-t border-border pt-4 text-center text-sm">
               {mode === 'login' ? (
-                <span className="text-muted-foreground">
-                  No account?{' '}
-                  <button
-                    onClick={() => setMode('register')}
-                    className="font-medium text-accent hover:underline"
-                  >
-                    Register
-                  </button>
-                </span>
+                registrationEnabled ? (
+                  <span className="text-muted-foreground">
+                    No account?{' '}
+                    <button
+                      onClick={() => setMode('register')}
+                      className="font-medium text-accent hover:underline"
+                    >
+                      Register
+                    </button>
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">
+                    Registration is currently disabled. Contact an administrator.
+                  </span>
+                )
               ) : (
                 <span className="text-muted-foreground">
                   Already registered?{' '}

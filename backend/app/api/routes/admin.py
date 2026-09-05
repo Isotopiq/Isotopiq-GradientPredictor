@@ -11,7 +11,7 @@ from app.deps import CurrentUser, DBSession
 from app.models.app_settings import AppSettings
 from app.models.user import User
 from app.schemas.auth import AdminUserOut, AdminUserUpdate
-from app.services.audit_service import log_action, list_audit_logs, audit_log_to_dict
+from app.services.audit_service import log_action, list_audit_logs, audit_log_to_dict, clear_audit_logs
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -27,6 +27,7 @@ class AppSettingsOut(BaseModel):
     has_logo: bool
     logo_mime_type: str | None = None
     report_footer: str
+    registration_enabled: bool
 
 
 class AppSettingsUpdate(BaseModel):
@@ -35,6 +36,7 @@ class AppSettingsUpdate(BaseModel):
     lab_address: str | None = None
     lab_website: str | None = None
     report_footer: str | None = None
+    registration_enabled: bool | None = None
 
 
 async def _require_admin(user: User) -> None:
@@ -65,6 +67,7 @@ async def get_settings(db: DBSession, current: CurrentUser) -> AppSettingsOut:
         has_logo=settings.logo_bytes is not None,
         logo_mime_type=settings.logo_mime_type,
         report_footer=settings.report_footer,
+        registration_enabled=settings.registration_enabled,
     )
 
 
@@ -87,6 +90,8 @@ async def update_settings(
         settings.lab_website = data.lab_website
     if data.report_footer is not None:
         settings.report_footer = data.report_footer
+    if data.registration_enabled is not None:
+        settings.registration_enabled = data.registration_enabled
     await db.commit()
     await db.refresh(settings)
     return AppSettingsOut(
@@ -97,6 +102,7 @@ async def update_settings(
         has_logo=settings.logo_bytes is not None,
         logo_mime_type=settings.logo_mime_type,
         report_footer=settings.report_footer,
+        registration_enabled=settings.registration_enabled,
     )
 
 
@@ -133,6 +139,7 @@ async def upload_logo(
         has_logo=True,
         logo_mime_type=settings.logo_mime_type,
         report_footer=settings.report_footer,
+        registration_enabled=settings.registration_enabled,
     )
 
 
@@ -153,6 +160,7 @@ async def delete_logo(db: DBSession, current: CurrentUser) -> AppSettingsOut:
         has_logo=False,
         logo_mime_type=None,
         report_footer=settings.report_footer,
+        registration_enabled=settings.registration_enabled,
     )
 
 
@@ -163,6 +171,17 @@ async def get_logo(db: DBSession) -> Response:
     if settings.logo_bytes is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No logo set")
     return Response(content=settings.logo_bytes, media_type=settings.logo_mime_type or "image/png")
+
+
+@router.get("/public-settings")
+async def get_public_settings(db: DBSession) -> dict:
+    """Public settings (no auth) — used by login/register page to show/hide registration."""
+    settings = await _get_or_create_settings(db)
+    return {
+        "registration_enabled": settings.registration_enabled,
+        "lab_name": settings.lab_name,
+        "lab_subtitle": settings.lab_subtitle,
+    }
 
 
 # --- User Management ---
@@ -285,6 +304,16 @@ async def get_audit_logs(
         "limit": limit,
         "offset": offset,
     }
+
+
+@router.delete("/audit-logs")
+async def delete_audit_logs(db: DBSession, current: CurrentUser) -> dict:
+    """Clear all audit logs. Admin only."""
+    await _require_admin(current)
+    deleted = await clear_audit_logs(db)
+    # Log the clear action itself (after the delete so it's the only entry)
+    await log_action(db, current, "audit_logs_clear", "audit_log", None, f"Cleared {deleted} audit log entries")
+    return {"deleted": deleted}
 
 
 @router.get("/stats")

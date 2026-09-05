@@ -51,6 +51,7 @@ export function AdminPage() {
         lab_address: settings.lab_address || '',
         lab_website: settings.lab_website || '',
         report_footer: settings.report_footer,
+        registration_enabled: settings.registration_enabled,
       });
     }
   }, [settings]);
@@ -62,6 +63,16 @@ export function AdminPage() {
       toast.success('Settings saved');
     },
     onError: () => toast.error('Failed to save settings'),
+  });
+
+  const clearAuditMutation = useMutation({
+    mutationFn: () => adminApi.clearAuditLogs(),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-audit'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
+      toast.success(`Cleared ${res.deleted} audit log entries`);
+    },
+    onError: () => toast.error('Failed to clear audit logs'),
   });
 
   const handleSave = () => saveMutation.mutate(form);
@@ -363,6 +374,35 @@ export function AdminPage() {
             <textarea className="input mt-3 h-20 text-xs" value={form.report_footer || ''} onChange={(e) => setForm({ ...form, report_footer: e.target.value })} />
           </div>
 
+          {/* Security */}
+          <div className="card-scientific">
+            <div className="flex items-center gap-2">
+              <Shield size={16} className="text-accent" />
+              <h2 className="text-sm font-semibold">Security</h2>
+            </div>
+            <label className="mt-4 flex items-center justify-between cursor-pointer">
+              <div>
+                <span className="text-sm font-medium">Allow New User Registration</span>
+                <p className="text-xs text-muted-foreground">
+                  {form.registration_enabled
+                    ? 'New users can self-register accounts'
+                    : 'Registration is disabled — only admins can create accounts'}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={form.registration_enabled ?? true}
+                onClick={() => setForm({ ...form, registration_enabled: !form.registration_enabled })}
+                className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${form.registration_enabled ? 'bg-accent' : 'bg-muted'}`}
+              >
+                <span
+                  className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${form.registration_enabled ? 'translate-x-4' : 'translate-x-0.5'}`}
+                />
+              </button>
+            </label>
+          </div>
+
           <div className="flex justify-end">
             <button onClick={handleSave} disabled={saveMutation.isPending} className="btn-primary">
               <Save size={16} /> {saveMutation.isPending ? 'Saving...' : 'Save Settings'}
@@ -374,6 +414,26 @@ export function AdminPage() {
       {/* Audit log tab */}
       {tab === 'audit' && (
         <div className="card p-0 overflow-visible">
+          <div className="flex items-center justify-between border-b border-border p-3">
+            <div className="flex items-center gap-2">
+              <ScrollText size={16} className="text-muted-foreground" />
+              <span className="text-sm font-semibold">
+                Audit Logs {auditData?.total != null && `(${auditData.total})`}
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                if (confirm('Clear ALL audit log entries? This cannot be undone.')) {
+                  clearAuditMutation.mutate();
+                }
+              }}
+              disabled={clearAuditMutation.isPending || !auditData?.logs?.length}
+              className="btn-outline btn-sm text-destructive"
+            >
+              <Trash2 size={14} className="mr-1" />
+              {clearAuditMutation.isPending ? 'Clearing...' : 'Clear All Logs'}
+            </button>
+          </div>
           <table className="data-table">
             <thead>
               <tr>
