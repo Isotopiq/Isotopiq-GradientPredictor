@@ -1,0 +1,11 @@
+FROM postgres:16-alpine
+
+# Copy the custom entrypoint wrapper that syncs credentials on every start.
+# This ensures that changing POSTGRES_USER / POSTGRES_PASSWORD in .env takes
+# effect on the next `docker compose up` — even when the data volume already
+# exists from a previous deployment.
+COPY docker-entrypoint-pg.sh /usr/local/bin/docker-entrypoint-pg.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint-pg.sh
+
+ENTRYPOINT ["docker-entrypoint-pg.sh"]
+CMD ["postgres"]

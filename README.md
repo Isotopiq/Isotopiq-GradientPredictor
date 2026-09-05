@@ -77,6 +77,46 @@ The database stays internal to the compose network (not exposed to the host).
 | Backend (FastAPI)| 18700 | REST API + Swagger UI at `/docs`         |
 | PostgreSQL       | 18732 | For external DB tools (DBeaver/pgAdmin)  |
 
+## Changing the database password after deployment
+
+The PostgreSQL image only reads `POSTGRES_USER` / `POSTGRES_PASSWORD` when the
+data directory is empty (first init). This project includes a **custom DB
+entrypoint** (`backend/Dockerfile.pg` + `backend/docker-entrypoint-pg.sh`) that
+syncs the credentials from your `.env` file into the running database on every
+container start — so you can change the password at any time without data loss.
+
+### Option A: Manual (edit .env)
+
+1. Edit `.env` and update `POSTGRES_USER`, `POSTGRES_PASSWORD`, and
+   `DATABASE_URL` to the new values.
+2. Rebuild and restart:
+
+```bash
+docker compose up -d --build db backend
+```
+
+The DB container will start, sync the new password via `ALTER USER`, and the
+backend will connect with the updated `DATABASE_URL`.
+
+### Option B: Helper script (interactive)
+
+```bash
+./change-db-password.sh
+```
+
+This prompts for the new user/password, updates `.env`, and restarts the
+containers.
+
+### Option C: Easypanel
+
+Update the `POSTGRES_PASSWORD` (and `POSTGRES_USER` if needed) environment
+variables in Easypanel's UI, then redeploy. The custom entrypoint handles the
+sync automatically.
+
+> **Note:** If you change `POSTGRES_USER` to a name that doesn't exist in the
+> database, the entrypoint will create the new user and grant it access to the
+> existing database. The old user is not removed (to avoid data loss).
+
 ## Testing (Docker, run-to-completion — no lingering containers)
 
 ### Backend
