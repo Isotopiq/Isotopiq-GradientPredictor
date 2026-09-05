@@ -1,5 +1,13 @@
 import { apiClient } from './client';
-import type { CompoundList, CompoundListCreate, CompoundListUpdate } from '@/types';
+import type {
+  CompoundList,
+  CompoundListCreate,
+  CompoundListUpdate,
+  CSVCompoundEntry,
+  CSVParseResult,
+  ImportConfirmResult,
+  ImportResolveStatus,
+} from '@/types';
 
 export const compoundListsApi = {
   list: async (limit = 50, offset = 0) => {
@@ -26,5 +34,44 @@ export const compoundListsApi = {
 
   delete: async (id: string) => {
     await apiClient.delete(`/compound-lists/${id}`);
+  },
+
+  // CSV Import
+  parseCsv: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await apiClient.post<CSVParseResult>(
+      '/compound-lists/import/parse',
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    );
+    return data;
+  },
+
+  startResolve: async (entries: CSVCompoundEntry[], useLipidmaps: boolean) => {
+    const { data } = await apiClient.post<{ job_id: string }>(
+      '/compound-lists/import/resolve',
+      { entries, use_lipidmaps: useLipidmaps },
+    );
+    return data;
+  },
+
+  getResolveStatus: async (jobId: string) => {
+    const { data } = await apiClient.get<ImportResolveStatus>(
+      `/compound-lists/import/resolve/${jobId}`,
+    );
+    return data;
+  },
+
+  confirmImport: async (
+    listName: string,
+    listDescription: string | undefined,
+    compounds: { smiles: string; name?: string; cas?: string; source?: string }[],
+  ) => {
+    const { data } = await apiClient.post<ImportConfirmResult>(
+      '/compound-lists/import/confirm',
+      { list_name: listName, list_description: listDescription, compounds },
+    );
+    return data;
   },
 };

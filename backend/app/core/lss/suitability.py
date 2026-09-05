@@ -94,13 +94,24 @@ def score_method(
 
     # 1. Resolution penalty
     if len(rts_s) >= 2:
-        sorted_rts = sorted(rts_s)
+        # Sort (rt, width) pairs together to avoid mismatched widths
+        if widths_s:
+            pairs = sorted(zip(rts_s, widths_s, strict=False), key=lambda p: p[0])
+            sorted_rts = [p[0] for p in pairs]
+            sorted_widths = [p[1] for p in pairs]
+        else:
+            sorted_rts = sorted(rts_s)
+            sorted_widths = None
         min_rs = float("inf")
         for i in range(len(sorted_rts) - 1):
-            w = widths_s[i] if widths_s and i < len(widths_s) else default_peak_width(sorted_rts[i])
+            w = (
+                sorted_widths[i]
+                if sorted_widths and i < len(sorted_widths)
+                else default_peak_width(sorted_rts[i])
+            )
             w_next = (
-                widths_s[i + 1]
-                if widths_s and i + 1 < len(widths_s)
+                sorted_widths[i + 1]
+                if sorted_widths and i + 1 < len(sorted_widths)
                 else default_peak_width(sorted_rts[i + 1])
             )
             rs = resolution(sorted_rts[i], sorted_rts[i + 1], w, w_next)
@@ -146,13 +157,24 @@ def evaluate_method(
 
     # 1. Resolution
     if len(rts_s) >= 2:
-        sorted_rts = sorted(rts_s)
+        # Sort (rt, width) pairs together to avoid mismatched widths
+        if widths_s:
+            pairs = sorted(zip(rts_s, widths_s, strict=False), key=lambda p: p[0])
+            sorted_rts = [p[0] for p in pairs]
+            sorted_widths = [p[1] for p in pairs]
+        else:
+            sorted_rts = sorted(rts_s)
+            sorted_widths = None
         min_rs = float("inf")
         for i in range(len(sorted_rts) - 1):
-            w = widths_s[i] if widths_s and i < len(widths_s) else default_peak_width(sorted_rts[i])
+            w = (
+                sorted_widths[i]
+                if sorted_widths and i < len(sorted_widths)
+                else default_peak_width(sorted_rts[i])
+            )
             w_next = (
-                widths_s[i + 1]
-                if widths_s and i + 1 < len(widths_s)
+                sorted_widths[i + 1]
+                if sorted_widths and i + 1 < len(sorted_widths)
                 else default_peak_width(sorted_rts[i + 1])
             )
             rs = resolution(sorted_rts[i], sorted_rts[i + 1], w, w_next)

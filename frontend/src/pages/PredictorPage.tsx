@@ -18,6 +18,7 @@ import { SuitabilityCriteriaPanel } from '@/components/SuitabilityCriteriaPanel'
 import { DwellVolumeGuide } from '@/components/DwellVolumeGuide';
 import { PredictionEquationPanel } from '@/components/PredictionEquationPanel';
 import { ModelSelectionPanel } from '@/components/ModelSelectionPanel';
+import { RetentionModelSelector } from '@/components/RetentionModelSelector';
 import { PhSelectorPanel } from '@/components/PhSelectorPanel';
 import { ResolutionMap1D } from '@/components/ResolutionMap1D';
 import { ResolutionMap2D } from '@/components/ResolutionMap2D';
@@ -108,6 +109,9 @@ export function PredictorPage() {
   const [optimizing, setOptimizing] = useState(false);
   const [autoAdjustGradient, setAutoAdjustGradient] = useState(false);
   const [predictionConfidence, setPredictionConfidence] = useState<{ confidence: number; extrapolating: boolean; method: string } | null>(null);
+  // Retention mechanism/model selection (null = auto)
+  const [retentionMechanism, setRetentionMechanism] = useState<string | null>(null);
+  const [retentionModel, setRetentionModel] = useState<string | null>(null);
   const [robustnessResult, setRobustnessResult] = useState<{
     perturbations: Array<{ parameter: string; delta: string; rts: number[]; min_resolution: number; resolution_change: number }>;
     sensitivity_score: number;
@@ -584,6 +588,8 @@ export function PredictorPage() {
                   ph,
                   dwell_volume_ml: dwellVolume || undefined,
                   dead_volume_ml: deadVolume || undefined,
+                  retention_model: retentionModel || undefined,
+                  retention_mechanism: retentionMechanism || undefined,
                 });
                 return {
                   rt_s: sim.predicted_rt_s * tempRtFactor,
@@ -1499,6 +1505,21 @@ export function PredictorPage() {
           {/* --- Advanced Tools Tab --- */}
           {rightTab === 'advanced' && (
             <div className="space-y-4">
+              {/* Retention Mechanism & Model Selector */}
+              <RetentionModelSelector
+                columnType={columnChoice || suggestion?.column.column_type || 'C18'}
+                columnId={commercialColumnId}
+                hasCalibration={false}
+                percentBRange={Math.abs(
+                  (gradientTable[gradientTable.length - 1]?.percent_b ?? 95) -
+                  (gradientTable[0]?.percent_b ?? 5),
+                )}
+                selectedMechanism={retentionMechanism}
+                selectedModel={retentionModel}
+                onMechanismChange={setRetentionMechanism}
+                onModelChange={setRetentionModel}
+              />
+
               {/* F6: Prediction Equation Mode — auto-populate SMILES + RTs from compound list */}
               <PredictionEquationPanel
                 compoundsSmiles={compounds.map(c => c.smiles).filter(s => s && s.trim())}

@@ -94,6 +94,71 @@ export interface CompoundListUpdate {
   compound_ids?: string[];
 }
 
+// CSV Import types
+export interface CSVCompoundEntry {
+  row_index: number;
+  name: string;
+  formula?: string | null;
+  rt?: number | null;
+  charge?: number | null;
+  smiles?: string | null;
+  inchikey?: string | null;
+  cas?: string | null;
+}
+
+export interface CSVParseResult {
+  entries: CSVCompoundEntry[];
+  total_rows: number;
+  columns_detected: Record<string, string>;
+}
+
+export interface ResolvedCandidate {
+  smiles: string;
+  inchikey?: string | null;
+  formula?: string | null;
+  mw?: number | null;
+  name?: string | null;
+  source: string;
+  provider_id?: string | null;
+}
+
+export interface ResolvedCompound {
+  row_index: number;
+  name: string;
+  formula?: string | null;
+  rt?: number | null;
+  charge?: number | null;
+  cas?: string | null;
+  smiles?: string | null;
+  inchikey?: string | null;
+  mw?: number | null;
+  logp?: number | null;
+  tpsa?: number | null;
+  source: string;
+  status: string;
+  candidates: ResolvedCandidate[];
+  warnings: string[];
+}
+
+export interface ImportResolveStatus {
+  job_id: string;
+  status: string;
+  progress_pct: number;
+  total: number;
+  processed: number;
+  resolved: number;
+  unresolved: number;
+  ambiguous: number;
+  results: ResolvedCompound[];
+  error?: string | null;
+}
+
+export interface ImportConfirmResult {
+  compound_list: CompoundList;
+  compounds_created: number;
+  compounds_reused: number;
+}
+
 export interface GradientPoint {
   time_s: number;
   percent_b: number;
@@ -219,16 +284,56 @@ export interface GradientSimulateRequest {
   }>;
   dwell_volume_ml?: number;
   dead_volume_ml?: number;
+  retention_model?: string;
+  retention_mechanism?: string;
 }
 
 export interface GradientSimulateResult {
   predicted_rt_s: number;
   gradient_table: GradientPoint[];
   method: string;
+  retention_model?: string;
   confidence?: number;
   extrapolating?: boolean;
   rt_lower_s?: number;
   rt_upper_s?: number;
+}
+
+// Retention model registry types
+export interface RetentionMechanismInfo {
+  key: string;
+  label: string;
+  description: string;
+  column_types: string[];
+  solvent_model: string;
+}
+
+export interface RetentionModelInfo {
+  key: string;
+  label: string;
+  equation: string;
+  applicable_mechanisms: string[];
+  requires: string;
+  reference: string;
+  implemented: boolean;
+}
+
+export interface RetentionModelsRegistry {
+  mechanisms: Record<string, RetentionMechanismInfo>;
+  models: Record<string, RetentionModelInfo>;
+}
+
+export interface AutoSelectResult {
+  mechanism: string;
+  mechanism_info: { key: string; label: string };
+  selected_model: string;
+  selected_model_info: {
+    key: string;
+    label: string;
+    equation: string;
+    requires: string;
+  };
+  applicable_models: string[];
 }
 
 export interface ChromatogramRequest {

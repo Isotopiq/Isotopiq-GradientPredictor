@@ -1,13 +1,11 @@
 """Method routes: suggest, CRUD, gradient simulation, chromatogram, templates, sharing."""
 from __future__ import annotations
 
-import uuid
 import secrets
+import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, HTTPException, Query, status
 
-from app.deps import CurrentUser, DBSession
 from app.core.rules.templates import (
     get_categories,
     get_template,
@@ -15,7 +13,10 @@ from app.core.rules.templates import (
     template_to_dict,
     template_to_gradient_table,
 )
+from app.deps import CurrentUser, DBSession
 from app.schemas.method import (
+    BufferCalcOut,
+    BufferCalcRequest,
     ChromatogramOut,
     ChromatogramRequest,
     GradientSimulateOut,
@@ -24,42 +25,131 @@ from app.schemas.method import (
     MethodOut,
     MethodSuggestionOut,
     MethodSuggestionRequest,
-    MultiCompoundSuggestionRequest,
-    MultiCompoundSuggestionOut,
-    OptimizeGradientRequest,
-    OptimizeGradientOut,
-    UserTemplateCreate,
-    UserTemplateUpdate,
-    UserTemplateOut,
-    KnownCompoundRTSchema,
-    PredictionEquationRequest,
-    PredictionEquationOut,
-    PredictRTRequest,
-    PredictRTOut,
-    CalibrationPointSchema,
-    ModelSelectionRequest,
-    ModelSelectionOut,
-    PhDistributionRequest,
-    PhDistributionOut,
-    PhSuitabilityRequest,
-    PhSuitabilityOut,
-    ResolutionMap1DRequest,
-    ResolutionMap1DOut,
-    ResolutionMap2DRequest,
-    ResolutionMap2DOut,
-    TernaryOptimizeRequest,
-    TernaryOptimizeOut,
-    ColumnSpecSchema,
-    MethodTransferRequest,
     MethodTransferOut,
-    BufferCalcRequest,
-    BufferCalcOut,
+    MethodTransferRequest,
     MobilePhaseCheckRequest,
+    ModelSelectionOut,
+    ModelSelectionRequest,
+    MultiCompoundSuggestionOut,
+    MultiCompoundSuggestionRequest,
+    OptimizeGradientOut,
+    OptimizeGradientRequest,
     PeakTrackingRequest,
+    PhDistributionOut,
+    PhDistributionRequest,
+    PhSuitabilityOut,
+    PhSuitabilityRequest,
+    PredictionEquationOut,
+    PredictionEquationRequest,
+    PredictRTOut,
+    PredictRTRequest,
+    ResolutionMap1DOut,
+    ResolutionMap1DRequest,
+    ResolutionMap2DOut,
+    ResolutionMap2DRequest,
+    TernaryOptimizeOut,
+    TernaryOptimizeRequest,
+    UserTemplateCreate,
+    UserTemplateOut,
+    UserTemplateUpdate,
 )
 from app.services import method_service
 
 router = APIRouter(prefix="/methods", tags=["methods"])
+
+
+# --- Retention models registry ---
+
+@router.get("/retention-models")
+async def get_retention_models() -> dict:
+    """Return all supported retention mechanisms and models, plus auto-selection.
+
+    Query params (all optional):
+      column_type: Column type string (e.g. "C18")
+      column_id: Commercial column ID
+      has_calibration: bool
+      has_known_compounds: bool
+      has_ml_model: bool
+      percent_b_range: float
+      mechanism: Override mechanism
+    """
+    from app.core.lss.retention_models import (
+        RETENTION_MECHANISMS,
+        RETENTION_MODELS,
+    )
+
+    return {
+        "mechanisms": {
+            key: {
+                "key": m.key,
+                "label": m.label,
+                "description": m.description,
+                "column_types": list(m.column_types),
+                "solvent_model": m.solvent_model,
+            }
+            for key, m in RETENTION_MECHANISMS.items()
+        },
+        "models": {
+            key: {
+                "key": m.key,
+                "label": m.label,
+                "equation": m.equation,
+                "applicable_mechanisms": list(m.applicable_mechanisms),
+                "requires": m.requires,
+                "reference": m.reference,
+                "implemented": m.implemented,
+            }
+            for key, m in RETENTION_MODELS.items()
+        },
+    }
+
+
+@router.get("/retention-models/auto-select")
+async def auto_select_retention_model(
+    column_type: str | None = None,
+    column_id: str | None = None,
+    has_calibration: bool = False,
+    has_known_compounds: bool = False,
+    has_ml_model: bool = False,
+    percent_b_range: float = 90.0,
+    mechanism: str | None = None,
+) -> dict:
+    """Auto-select the best retention model for the given parameters."""
+    from app.core.lss.retention_models import (
+        RETENTION_MECHANISMS,
+        RETENTION_MODELS,
+        auto_select_model,
+        get_models_for_mechanism,
+        infer_mechanism_from_column,
+    )
+
+    inferred_mechanism = infer_mechanism_from_column(column_type)
+    selected = auto_select_model(
+        column_type=column_type,
+        column_id=column_id,
+        has_calibration=has_calibration,
+        has_known_compounds=has_known_compounds,
+        has_ml_model=has_ml_model,
+        percent_b_range=percent_b_range,
+        mechanism=mechanism,
+    )
+    applicable = get_models_for_mechanism(mechanism or inferred_mechanism)
+
+    return {
+        "mechanism": mechanism or inferred_mechanism,
+        "mechanism_info": {
+            "key": RETENTION_MECHANISMS[mechanism or inferred_mechanism].key,
+            "label": RETENTION_MECHANISMS[mechanism or inferred_mechanism].label,
+        },
+        "selected_model": selected,
+        "selected_model_info": {
+            "key": RETENTION_MODELS[selected].key,
+            "label": RETENTION_MODELS[selected].label,
+            "equation": RETENTION_MODELS[selected].equation,
+            "requires": RETENTION_MODELS[selected].requires,
+        },
+        "applicable_models": applicable,
+    }
 
 
 # --- Action routes (no path params, safe to be first) ---
@@ -117,9 +207,10 @@ async def optimize_gradient(data: OptimizeGradientRequest) -> OptimizeGradientOu
 @router.post("/adducts")
 async def predict_adducts(data: dict) -> dict:
     """Predict expected m/z values for common ESI adducts from SMILES."""
-    from app.core.chem.parser import ChemParseError, parse_mol
-    from app.core.chem.descriptors import predict_adducts as compute_adducts
     from rdkit.Chem import Descriptors
+
+    from app.core.chem.descriptors import predict_adducts as compute_adducts
+    from app.core.chem.parser import ChemParseError, parse_mol
 
     smiles = data.get("smiles", "")
     if not smiles:
@@ -180,6 +271,8 @@ async def build_prediction_equation(data: PredictionEquationRequest) -> Predicti
     """Build a retention prediction equation from >=5 known compounds."""
     from app.core.ml.prediction_equation import (
         KnownCompoundRT,
+    )
+    from app.core.ml.prediction_equation import (
         build_prediction_equation as _build,
     )
 
@@ -213,7 +306,8 @@ async def build_prediction_equation(data: PredictionEquationRequest) -> Predicti
 @router.post("/prediction-equation/predict", response_model=PredictRTOut)
 async def predict_rt(data: PredictRTRequest) -> PredictRTOut:
     """Predict retention time for a new compound using a fitted equation."""
-    from app.core.ml.prediction_equation import PredictionEquation, predict_rt as _predict
+    from app.core.ml.prediction_equation import PredictionEquation
+    from app.core.ml.prediction_equation import predict_rt as _predict
 
     eq = PredictionEquation(
         coefficients=data.coefficients,
@@ -244,9 +338,8 @@ async def model_selection(data: ModelSelectionRequest) -> ModelSelectionOut:
     from app.core.ml.model_selection import (
         CalibrationPoint,
         GradientModel,
-        fit_model,
         evaluate_fit,
-        suggest_best_model,
+        fit_model,
     )
 
     if len(data.points) < 2:
@@ -337,6 +430,9 @@ async def resolution_map_1d(data: ResolutionMap1DRequest) -> ResolutionMap1DOut:
         "percent_b_start": data.percent_b_start,
         "percent_b_end": data.percent_b_end,
         "column_type": data.column_type,
+        "column_void_volume_ml": data.column_void_volume_ml,
+        "dwell_volume_ml": data.dwell_volume_ml,
+        "dead_volume_ml": data.dead_volume_ml,
     }
     if data.suitability:
         fixed["suitability"] = data.suitability.model_dump()
@@ -368,6 +464,9 @@ async def resolution_map_2d(data: ResolutionMap2DRequest) -> ResolutionMap2DOut:
         "percent_b_start": data.percent_b_start,
         "percent_b_end": data.percent_b_end,
         "column_type": data.column_type,
+        "column_void_volume_ml": data.column_void_volume_ml,
+        "dwell_volume_ml": data.dwell_volume_ml,
+        "dead_volume_ml": data.dead_volume_ml,
     }
     if data.suitability:
         fixed["suitability"] = data.suitability.model_dump()
@@ -559,7 +658,8 @@ async def list_methods(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> list[MethodOut]:
-    items = await method_service.list_methods(db, current.id, limit, offset)
+    # All users see all methods (collaborative library)
+    items = await method_service.list_methods(db, None, limit, offset)
     return [MethodOut.model_validate(m) for m in items]
 
 
@@ -612,9 +712,11 @@ async def apply_template(
         return MethodOut.model_validate(method)
 
     # Check user-created templates
-    from sqlalchemy import select
-    from app.models.user_method_template import UserMethodTemplate
     import uuid as uuid_mod
+
+    from sqlalchemy import select
+
+    from app.models.user_method_template import UserMethodTemplate
 
     try:
         tmpl_uuid = uuid_mod.UUID(template_id)
@@ -666,6 +768,7 @@ async def list_user_templates(
 ) -> list[UserTemplateOut]:
     """List user-created templates (own + shared)."""
     from sqlalchemy import select
+
     from app.models.user_method_template import UserMethodTemplate
 
     stmt = select(UserMethodTemplate).where(
@@ -719,6 +822,7 @@ async def update_user_template(
 ) -> UserTemplateOut:
     """Update an existing user-created template."""
     from sqlalchemy import select
+
     from app.models.user_method_template import UserMethodTemplate
 
     stmt = select(UserMethodTemplate).where(UserMethodTemplate.id == template_id)
@@ -746,6 +850,7 @@ async def delete_user_template(
 ) -> None:
     """Delete a user-created template."""
     from sqlalchemy import select
+
     from app.models.user_method_template import UserMethodTemplate
 
     stmt = select(UserMethodTemplate).where(UserMethodTemplate.id == template_id)
@@ -766,6 +871,7 @@ async def delete_user_template(
 async def get_shared_method(token: str, db: DBSession) -> MethodOut:
     """Get a shared method by token (public, no auth required)."""
     from sqlalchemy import select
+
     from app.models.method import Method
 
     stmt = select(Method).where(Method.share_token == token)

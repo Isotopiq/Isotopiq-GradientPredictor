@@ -139,7 +139,8 @@ async def model_stats(db: DBSession, current: CurrentUser) -> dict:
     col_count_result = await db.execute(model_col_q)
     models_by_column = {row[0]: row[1] for row in col_count_result.all()}
 
-    # Total counts — scoped to the current user (admin sees global counts)
+    # Total counts — methods are visible to all users (collaborative library)
+    # Models, compounds, and runs remain owner-scoped for regular users
     if uid is None:
         total_models = await db.scalar(select(func.count(ModelArtifact.id)))
         total_compounds = await db.scalar(select(func.count(Compound.id)))
@@ -153,18 +154,13 @@ async def model_stats(db: DBSession, current: CurrentUser) -> dict:
         total_compounds = await db.scalar(
             select(func.count(Compound.id)).where(Compound.owner_id == uid)
         )
-        total_methods = await db.scalar(
-            select(func.count(Method.id)).where(Method.owner_id == uid)
-        )
+        # Methods: all methods visible to all users (collaborative library)
+        total_methods = await db.scalar(select(func.count(Method.id)))
         total_runs = await db.scalar(
             select(func.count(Run.id)).where(Run.owner_id == uid)
         )
-        # Predictions don't have owner_id — join through method
-        total_predictions = await db.scalar(
-            select(func.count(Prediction.id))
-            .join(Method, Prediction.method_id == Method.id)
-            .where(Method.owner_id == uid)
-        )
+        # Predictions: all predictions (join through all methods)
+        total_predictions = await db.scalar(select(func.count(Prediction.id)))
 
     # Average confidence across predictions (scoped)
     avg_q = select(func.avg(Prediction.confidence))

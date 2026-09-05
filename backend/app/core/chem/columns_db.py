@@ -1185,6 +1185,37 @@ _FAMILIES: list[ColumnFamily] = [
         (2, 12), 60, None,
         "Ion-pair compatible, charged surfactants, ionic compounds",
         {3.0: [(50, 2.1), (100, 2.1), (150, 2.1)]}),
+
+    # =======================================================================
+    # MERCK / SEQUANT — ZIC-HILIC (zwitterionic HILIC, sulfobetaine phase)
+    # =======================================================================
+
+    ColumnFamily("Merck", "SeQuant ZIC-HILIC", "HILIC",
+        (2, 8), 40, "L3",
+        "HILIC, zwitterionic sulfobetaine, 200Å pore, polar metabolites, "
+        "sugars, nucleotides, amino acids, 5 µm",
+        {5.0: [(50, 2.1), (100, 2.1), (150, 2.1), (150, 4.6), (250, 4.6)]}),
+
+    ColumnFamily("Merck", "SeQuant ZIC-HILIC (3.5µm)", "HILIC",
+        (2, 8), 40, "L3",
+        "HILIC, zwitterionic sulfobetaine, 200Å pore, higher efficiency, 3.5 µm",
+        {3.5: [(50, 2.1), (100, 2.1), (150, 2.1), (150, 4.6)]}),
+
+    ColumnFamily("Merck", "SeQuant ZIC-pHILIC", "HILIC",
+        (2, 9), 40, "L3",
+        "Polymeric HILIC, zwitterionic sulfobetaine, pH 2-9, 200Å pore, "
+        "polar metabolites, stable at high pH",
+        {5.0: [(50, 2.1), (100, 2.1), (150, 2.1), (150, 4.6)]}),
+
+    # =======================================================================
+    # MERCK — ZIC-cHILIC (zwitterionic, charged HILIC variant)
+    # =======================================================================
+
+    ColumnFamily("Merck", "SeQuant ZIC-cHILIC", "HILIC",
+        (2, 8), 40, "L3",
+        "Charged HILIC, zwitterionic, phosphorylcholine phase, "
+        "polar metabolites with alternative selectivity",
+        {3.5: [(50, 2.1), (100, 2.1), (150, 2.1), (150, 4.6)]}),
 ]
 
 
@@ -1543,8 +1574,15 @@ def list_columns(
     if particle_size is not None:
         result = [c for c in result if abs(c.particle_size_um - particle_size) < 0.01]
     if search:
-        q = search.lower()
-        result = [c for c in result if q in c.name.lower() or q in c.brand.lower() or q in c.chemistry.lower()]
+        # Multi-word search: split into tokens and require ALL tokens to match
+        # across any combination of name, brand, chemistry fields.
+        # e.g., "Waters HILIC" matches a column with brand="Waters" and name containing "HILIC"
+        tokens = [t.strip().lower() for t in search.split() if t.strip()]
+        if tokens:
+            def matches_all(c: ColumnSpec) -> bool:
+                combined = f"{c.name} {c.brand} {c.chemistry}".lower()
+                return all(t in combined for t in tokens)
+            result = [c for c in result if matches_all(c)]
     total = len(result)
     return result[offset:offset + limit], total
 

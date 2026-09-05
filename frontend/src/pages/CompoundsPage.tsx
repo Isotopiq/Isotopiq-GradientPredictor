@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Trash2, Search, Plus, FlaskConical, ChevronDown, X, Edit3, Check, Share2, Layers, ListPlus, FolderOpen, ArrowRight } from 'lucide-react';
+import { Trash2, Search, Plus, FlaskConical, ChevronDown, X, Edit3, Check, Share2, Layers, ListPlus, FolderOpen, ArrowRight, Upload } from 'lucide-react';
 import { compoundsApi } from '@/api/compounds';
 import { compoundListsApi } from '@/api/compoundLists';
 import { CompoundSearch } from '@/components/CompoundSearch';
 import { MoleculeThumbnail } from '@/components/MoleculeViewer';
 import { CompoundDetailModal } from '@/components/CompoundDetailModal';
+import { CompoundListImport } from '@/components/CompoundListImport';
 import { EmptyState } from '@/components/EmptyState';
 import { Skeleton } from '@/components/Skeleton';
 import { toast } from 'sonner';
@@ -265,6 +266,7 @@ function CompoundListsTab() {
   const [listDescription, setListDescription] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchCompounds, setSearchCompounds] = useState('');
+  const [showImport, setShowImport] = useState(false);
 
   const { data: lists, isLoading: listsLoading } = useQuery({
     queryKey: ['compound-lists'],
@@ -416,7 +418,10 @@ function CompoundListsTab() {
   return (
     <div>
       {!showEditor && (
-        <div className="mb-4 flex justify-end">
+        <div className="mb-4 flex justify-end gap-2">
+          <button onClick={() => setShowImport(true)} className="btn-secondary btn-sm">
+            <Upload size={14} /> Import CSV
+          </button>
           <button onClick={handleOpenCreate} className="btn-primary btn-sm">
             <ListPlus size={14} /> New List
           </button>
@@ -616,6 +621,16 @@ function CompoundListsTab() {
           description="Create grouped lists of compounds for reuse with the predictor. Click 'New List' to select compounds from your library and save them as a named group."
         />
       )}
+
+      {/* CSV Import dialog */}
+      <CompoundListImport
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        onCreated={() => {
+          queryClient.invalidateQueries({ queryKey: ['compound-lists'] });
+          queryClient.invalidateQueries({ queryKey: ['compounds'] });
+        }}
+      />
     </div>
   );
 }

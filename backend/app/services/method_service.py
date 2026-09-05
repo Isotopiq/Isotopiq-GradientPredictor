@@ -16,10 +16,9 @@ from app.core.lss.chromatogram import (
 )
 from app.core.lss.gradient_sim import (
     CalibrationRun,
+    fit_lss,
     heuristic_lss_params,
     predict_rt_from_gradient,
-    predict_rt_lss,
-    fit_lss,
 )
 from app.core.rules.engine import suggest_method
 from app.models.method import Method
@@ -133,9 +132,12 @@ async def get_method(db: AsyncSession, method_id: uuid.UUID) -> Method | None:
 async def list_methods(
     db: AsyncSession, owner_id: uuid.UUID | None, limit: int = 50, offset: int = 0
 ) -> list[Method]:
+    """List all methods visible to the user.
+
+    All users can see all methods from all users (collaborative library).
+    The owner_id parameter is kept for API compatibility but no longer filters.
+    """
     stmt = select(Method).order_by(Method.created_at.desc())
-    if owner_id is not None:
-        stmt = stmt.where(Method.owner_id == owner_id)
     stmt = stmt.limit(limit).offset(offset)
     result = await db.execute(stmt)
     return list(result.scalars().all())
@@ -153,42 +155,75 @@ async def delete_method(db: AsyncSession, method_id: uuid.UUID) -> bool:
 def simulate_gradient(data: GradientSimulateRequest) -> dict[str, Any]:
     """Predict RT for a gradient.
 
-    Priority:
-      1. PIRM (if column_id references a commercial column with phase data)
-      2. LSS fit (if calibration runs provided)
-      3. Heuristic LSS (fallback)
+    Model selection priority:
+      1. If retention_model is explicitly set, use that model
+      2. PIRM (if column_id references a commercial column with phase data)
+      3. LSS fit (if calibration runs provided)
+      4. Heuristic LSS (fallback)
 
     If smiles + pH are provided, logD is computed server-side using
     multi-site Henderson-Hasselbalch (more accurate than the frontend
     single-pKa approximation).
     """
+    from app.core.lss.retention_models import (
+        auto_select_model,
+        heuristic_jandera_params,
+        heuristic_polarity_params,
+        heuristic_quadratic_params,
+        predict_rt_jandera,
+        predict_rt_polarity,
+        predict_rt_quadratic,
+    )
+
     # Compute logD from SMILES + pH if provided
     effective_logp = data.logp
     if data.smiles and data.ph is not None:
         try:
-            from app.core.chem.parser import parse_mol
             from app.core.chem.logd import logd_at_ph
+            from app.core.chem.parser import parse_mol
 
             mol = parse_mol(data.smiles).mol
             effective_logp = logd_at_ph(mol, data.ph, data.logp)
         except Exception:
             pass  # fall back to raw logP
 
-    # 1. Try PIRM if a commercial column ID is provided
-    if data.column_id:
+    # Determine which model to use
+    percent_b_range = 90.0
+    if data.gradient_table and len(data.gradient_table) >= 2:
+        percent_b_range = abs(
+            data.gradient_table[-1].get("percent_b", 95)
+            - data.gradient_table[0].get("percent_b", 5)
+        )
+
+    has_calibration = bool(data.calibration_runs and len(data.calibration_runs) >= 2)
+
+    selected_model = data.retention_model or auto_select_model(
+        column_type=data.column_type,
+        column_id=data.column_id,
+        has_calibration=has_calibration,
+        has_known_compounds=False,
+        has_ml_model=False,
+        percent_b_range=percent_b_range,
+        mechanism=data.retention_mechanism,
+    )
+
+    # Compute t0 for models that need it
+    t0 = 60.0 * data.column_void_volume_ml / max(data.flow_rate_ml_min, 0.01)
+
+    # PIRM model
+    if selected_model == "pirm" and data.column_id:
         from app.core.chem.columns_db import get_column
         from app.core.ml.pirm_model import predict_retention as pirm_predict
 
         col = get_column(data.column_id)
         if col is not None and col.phase is not None:
-            # Compute 3D descriptors if SMILES is available
             asph = 0.0
             rgyr = 0.0
             pmi_ratio = 0.0
             if data.smiles:
                 try:
-                    from app.core.chem.parser import parse_mol
                     from app.core.chem.descriptors import compute_descriptors
+                    from app.core.chem.parser import parse_mol
                     mol = parse_mol(data.smiles).mol
                     desc = compute_descriptors(mol)
                     if desc.descriptors_3d:
@@ -215,14 +250,73 @@ def simulate_gradient(data: GradientSimulateRequest) -> dict[str, Any]:
                 "predicted_rt_s": result["predicted_rt_s"],
                 "gradient_table": data.gradient_table,
                 "method": "pirm",
+                "retention_model": "pirm",
                 "confidence": result["confidence"],
                 "extrapolating": result["extrapolating"],
                 "rt_lower_s": result["rt_lower_s"],
                 "rt_upper_s": result["rt_upper_s"],
             }
+        # Fall through if column not found
 
-    # 2. LSS fit from calibration runs
-    if data.calibration_runs and len(data.calibration_runs) >= 2:
+    # Quadratic model (Eq 6.198)
+    if selected_model == "quadratic":
+        params = heuristic_quadratic_params(effective_logp, data.mw, t0)
+        rt = predict_rt_quadratic(
+            params,
+            data.gradient_table,
+            flow_rate_ml_min=data.flow_rate_ml_min,
+            dwell_volume_ml=data.dwell_volume_ml,
+            dead_volume_ml=data.dead_volume_ml,
+        )
+        return {
+            "predicted_rt_s": rt,
+            "gradient_table": data.gradient_table,
+            "method": "quadratic",
+            "retention_model": "quadratic",
+            "confidence": 0.35,
+            "extrapolating": False,
+        }
+
+    # Jandera model (Eq 6.20)
+    if selected_model == "jandera":
+        params = heuristic_jandera_params(effective_logp, data.mw, t0)
+        rt = predict_rt_jandera(
+            params,
+            data.gradient_table,
+            flow_rate_ml_min=data.flow_rate_ml_min,
+            dwell_volume_ml=data.dwell_volume_ml,
+            dead_volume_ml=data.dead_volume_ml,
+        )
+        return {
+            "predicted_rt_s": rt,
+            "gradient_table": data.gradient_table,
+            "method": "jandera",
+            "retention_model": "jandera",
+            "confidence": 0.3,
+            "extrapolating": False,
+        }
+
+    # Polarity model (Eq 6.31)
+    if selected_model == "polarity":
+        params = heuristic_polarity_params(effective_logp, t0)
+        rt = predict_rt_polarity(
+            params,
+            data.gradient_table,
+            flow_rate_ml_min=data.flow_rate_ml_min,
+            dwell_volume_ml=data.dwell_volume_ml,
+            dead_volume_ml=data.dead_volume_ml,
+        )
+        return {
+            "predicted_rt_s": rt,
+            "gradient_table": data.gradient_table,
+            "method": "polarity",
+            "retention_model": "polarity",
+            "confidence": 0.35,
+            "extrapolating": False,
+        }
+
+    # LSS fit from calibration runs
+    if selected_model == "lss_fit" and has_calibration:
         runs = [
             CalibrationRun(
                 gradient_time_s=r["gradient_time_s"],
@@ -235,7 +329,7 @@ def simulate_gradient(data: GradientSimulateRequest) -> dict[str, Any]:
         params = fit_lss(runs)
         method = "lss_fit"
     else:
-        # 3. Heuristic LSS
+        # Heuristic LSS (default fallback)
         params = heuristic_lss_params(
             effective_logp,
             mw=data.mw,
@@ -258,6 +352,7 @@ def simulate_gradient(data: GradientSimulateRequest) -> dict[str, Any]:
         "predicted_rt_s": rt,
         "gradient_table": data.gradient_table,
         "method": method,
+        "retention_model": "lss",
     }
 
 
@@ -293,13 +388,13 @@ def suggest_multi(
     and pairwise resolution matrix with co-elution flags.
     """
     from app.core.chem.parser import ChemParseError, parse_mol
-    from app.core.rules.engine import suggest_method
-    from app.core.rules.gradient import heuristic_gradient
+    from app.core.lss.chromatogram import default_peak_width, resolution
     from app.core.lss.gradient_sim import (
         heuristic_lss_params,
         predict_rt_from_gradient,
     )
-    from app.core.lss.chromatogram import default_peak_width, resolution
+    from app.core.rules.engine import suggest_method
+    from app.core.rules.gradient import heuristic_gradient
 
     per_compound: list[dict[str, Any]] = []
     for i, smi in enumerate(smiles_list):
@@ -404,6 +499,7 @@ def optimize_gradient_separation(
     ph: float = 2.7,
     temperature_c: float = 30.0,
     suitability: dict[str, Any] | None = None,
+    column_void_volume_ml: float = 0.4,
 ) -> dict[str, Any]:
     """Search for the gradient (%B start/end/time) that maximizes separation.
 
@@ -418,13 +514,14 @@ def optimize_gradient_separation(
     Returns the best configuration with predicted RTs and resolution matrix.
     """
     import math
+
     from app.core.chem.parser import ChemParseError, parse_mol
-    from app.core.rules.engine import suggest_method
+    from app.core.lss.chromatogram import default_peak_width, resolution
     from app.core.lss.gradient_sim import (
         heuristic_lss_params,
         predict_rt_from_gradient,
     )
-    from app.core.lss.chromatogram import default_peak_width, resolution
+    from app.core.rules.engine import suggest_method
 
     # Parse all compounds and collect descriptors
     compounds: list[dict[str, Any]] = []
@@ -568,7 +665,7 @@ def optimize_gradient_separation(
                         min_k=suitability.get("min_k", 0.5),
                         max_k=suitability.get("max_k", 20.0),
                     )
-                    t0_calc = 60.0 * 0.4 / max(flow_rate_ml_min, 0.01)  # approximate t0
+                    t0_calc = 60.0 * column_void_volume_ml / max(flow_rate_ml_min, 0.01)
                     suit_score = score_method(
                         [r[1] for r in rts_sorted],
                         [r[2] for r in rts_sorted],
@@ -642,7 +739,7 @@ def optimize_gradient_separation(
             min_k=suitability.get("min_k", 0.5),
             max_k=suitability.get("max_k", 20.0),
         )
-        t0_calc = 60.0 * 0.4 / max(flow_rate_ml_min, 0.01)
+        t0_calc = 60.0 * column_void_volume_ml / max(flow_rate_ml_min, 0.01)
         best_rts_sorted = sorted(best_rts, key=lambda x: x[1])
         eval_result = evaluate_method(
             [r[1] for r in best_rts_sorted],
@@ -686,14 +783,15 @@ def analyze_robustness(
     and compounds are most sensitive.
     """
     import math
-    from app.core.chem.parser import ChemParseError, parse_mol
+
     from app.core.chem.logd import logd_at_ph
-    from app.core.rules.engine import suggest_method
+    from app.core.chem.parser import ChemParseError, parse_mol
+    from app.core.lss.chromatogram import default_peak_width, resolution
     from app.core.lss.gradient_sim import (
         heuristic_lss_params,
         predict_rt_from_gradient,
     )
-    from app.core.lss.chromatogram import default_peak_width, resolution
+    from app.core.rules.engine import suggest_method
 
     # Parse compounds
     compounds: list[dict[str, Any]] = []

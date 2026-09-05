@@ -71,6 +71,9 @@ def _compute_rts_for_compounds(
     flow_rate: float,
     temperature: float,
     column_type: str,
+    column_void_volume_ml: float = 0.4,
+    dwell_volume_ml: float | None = None,
+    dead_volume_ml: float | None = None,
 ) -> list[tuple[float, float]]:
     """Compute RTs for all compounds at given conditions. Returns [(rt, width), ...]."""
     # Temperature factor (negative: RP-LC retention is exothermic, higher T → lower k)
@@ -90,7 +93,14 @@ def _compute_rts_for_compounds(
             hba=c.get("hba", 0),
             column_type=column_type,
         )
-        rt = predict_rt_from_gradient(params, gradient_table, flow_rate)
+        rt = predict_rt_from_gradient(
+            params,
+            gradient_table,
+            flow_rate_ml_min=flow_rate,
+            column_void_volume_ml=column_void_volume_ml,
+            dwell_volume_ml=dwell_volume_ml,
+            dead_volume_ml=dead_volume_ml,
+        )
         rt *= temp_factor
         w = default_peak_width(rt)
         rts.append((rt, w))
@@ -178,6 +188,9 @@ def resolution_map_1d(
     percent_b_start = fp.get("percent_b_start", 5.0)
     percent_b_end = fp.get("percent_b_end", 95.0)
     column_type = fp.get("column_type", "C18")
+    column_void_volume_ml = fp.get("column_void_volume_ml", 0.4)
+    dwell_volume_ml = fp.get("dwell_volume_ml")
+    dead_volume_ml = fp.get("dead_volume_ml")
     criteria = fp.get("suitability")
 
     compounds = _prepare_compounds(smiles_list, ph)
@@ -224,7 +237,12 @@ def resolution_map_1d(
             be = x
 
         grad_table = _build_gradient_table(gt, bs, be)
-        rts = _compute_rts_for_compounds(compounds, grad_table, fr, temp, column_type)
+        rts = _compute_rts_for_compounds(
+            compounds, grad_table, fr, temp, column_type,
+            column_void_volume_ml=column_void_volume_ml,
+            dwell_volume_ml=dwell_volume_ml,
+            dead_volume_ml=dead_volume_ml,
+        )
 
         min_rs = _compute_min_rs(rts)
         min_rs_list.append(min_rs)
@@ -240,9 +258,12 @@ def resolution_map_1d(
                 "min_rs": round(min_rs, 4),
             })
 
-        # Suitability score
+        # Suitability score — use actual column void volume for t0
         if suit_criteria:
-            t0 = 60.0 * 0.4 / max(fr, 0.01)
+            if dead_volume_ml and dead_volume_ml > 0:
+                t0 = 60.0 * dead_volume_ml / max(fr, 0.01)
+            else:
+                t0 = 60.0 * column_void_volume_ml / max(fr, 0.01)
             score = score_method([r[0] for r in rts], [r[1] for r in rts], gt * 60, t0, suit_criteria)
             suitability_scores.append(score)
         else:
@@ -280,6 +301,9 @@ def resolution_map_2d(
     percent_b_start = fp.get("percent_b_start", 5.0)
     percent_b_end = fp.get("percent_b_end", 95.0)
     column_type = fp.get("column_type", "C18")
+    column_void_volume_ml = fp.get("column_void_volume_ml", 0.4)
+    dwell_volume_ml = fp.get("dwell_volume_ml")
+    dead_volume_ml = fp.get("dead_volume_ml")
     criteria = fp.get("suitability")
 
     compounds = _prepare_compounds(smiles_list, ph)
@@ -339,12 +363,20 @@ def resolution_map_2d(
                 be = y
 
             grad_table = _build_gradient_table(gt, bs, be)
-            rts = _compute_rts_for_compounds(comps, grad_table, fr, temp, column_type)
+            rts = _compute_rts_for_compounds(
+                comps, grad_table, fr, temp, column_type,
+                column_void_volume_ml=column_void_volume_ml,
+                dwell_volume_ml=dwell_volume_ml,
+                dead_volume_ml=dead_volume_ml,
+            )
             min_rs = _compute_min_rs(rts)
             rs_row.append(min_rs)
 
             if suit_criteria:
-                t0 = 60.0 * 0.4 / max(fr, 0.01)
+                if dead_volume_ml and dead_volume_ml > 0:
+                    t0 = 60.0 * dead_volume_ml / max(fr, 0.01)
+                else:
+                    t0 = 60.0 * column_void_volume_ml / max(fr, 0.01)
                 score = score_method(
                     [r[0] for r in rts], [r[1] for r in rts], gt * 60, t0, suit_criteria
                 )

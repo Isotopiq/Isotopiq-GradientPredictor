@@ -100,11 +100,14 @@ def default_peak_width(rt_s: float) -> float:
     """Heuristic peak width (FWHM) from retention time.
 
     Typical plate count ~10000-20000; width grows with sqrt(rt).
+    FWHM = 2.355 * sigma, where sigma = rt / sqrt(N_plates).
     """
     n_plates = 12000.0
     if rt_s <= 0:
         return 2.0
-    return max(2.0, rt_s / math.sqrt(n_plates) * 4.0)
+    sigma = rt_s / math.sqrt(n_plates)
+    fwhm = 2.0 * math.sqrt(2.0 * math.log(2.0)) * sigma  # 2.355 * sigma
+    return max(2.0, fwhm)
 
 
 def default_tailing(rt_s: float) -> float:
@@ -120,7 +123,15 @@ def default_tailing(rt_s: float) -> float:
 
 
 def resolution(rt1: float, w1: float, rt2: float, w2: float) -> float:
-    """Chromatographic resolution Rs between two peaks."""
+    """Chromatographic resolution Rs between two peaks (USP formula).
+
+    Widths w1, w2 are FWHM values. The USP formula uses baseline widths (4σ),
+    so we convert: baseline_width = FWHM * 4 / 2.355 = FWHM * 1.698.
+    """
     if w1 + w2 <= 0:
         return 0.0
-    return 2.0 * abs(rt2 - rt1) / (w1 + w2)
+    # Convert FWHM to baseline width (4σ): 4σ = FWHM * 4 / (2*sqrt(2*ln(2)))
+    fwhm_to_4sigma = 4.0 / (2.0 * math.sqrt(2.0 * math.log(2.0)))
+    wb1 = w1 * fwhm_to_4sigma
+    wb2 = w2 * fwhm_to_4sigma
+    return 2.0 * abs(rt2 - rt1) / (wb1 + wb2)

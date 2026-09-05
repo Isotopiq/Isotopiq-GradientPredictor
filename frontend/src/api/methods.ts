@@ -29,12 +29,35 @@ import type {
   MobilePhaseCheckResult,
   TrackPeak,
   PeakTrackingResult,
+  RetentionModelsRegistry,
+  AutoSelectResult,
 } from '@/types';
 
 export const methodsApi = {
   suggest: async (data: MethodSuggestionRequest) => {
     const { data: result } = await apiClient.post<MethodSuggestion>('/methods/suggest', data);
     return result;
+  },
+
+  getRetentionModels: async () => {
+    const { data } = await apiClient.get<RetentionModelsRegistry>('/methods/retention-models');
+    return data;
+  },
+
+  autoSelectRetentionModel: async (params: {
+    column_type?: string;
+    column_id?: string;
+    has_calibration?: boolean;
+    has_known_compounds?: boolean;
+    has_ml_model?: boolean;
+    percent_b_range?: number;
+    mechanism?: string;
+  }) => {
+    const { data } = await apiClient.get<AutoSelectResult>(
+      '/methods/retention-models/auto-select',
+      { params },
+    );
+    return data;
   },
 
   suggestMulti: async (smilesList: string[], params?: {

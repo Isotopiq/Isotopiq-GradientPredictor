@@ -69,19 +69,54 @@ def fit_lss(
     return best
 
 
-def predict_rt_lss(params: LSSParameters, run: CalibrationRun) -> float:
-    """Predict retention time for a given gradient run using LSS."""
+def predict_rt_lss(
+    params: LSSParameters,
+    run: CalibrationRun,
+    dwell_time_s: float = 0.0,
+) -> float:
+    """Predict retention time for a given gradient run using LSS.
+
+    LSS gradient equation (Snyder, Eq 6.17):
+        tR = t0 * (1 + (1/b) * log10(1 + b * k0_eff))
+
+    With dwell time correction (Eq 6.19):
+        tR = t_d + t0 * (1 + (1/b) * log10(1 + b * k0_eff * 10^(-b * t_d / t0)))
+
+    where:
+        b = S * dphi * t0 / tG  (gradient slope parameter)
+        k0_eff = 10^(log_k0 - S * phi0)  (retention factor at gradient start)
+        t_d = dwell time (s)
+
+    Args:
+        params: LSS parameters (log_k0, S, t0).
+        run: Calibration run with gradient conditions and observed RT.
+        dwell_time_s: System dwell time in seconds (default 0 for backward compat).
+
+    Returns:
+        Predicted retention time in seconds.
+    """
     dphi = run.phi_end - run.phi_start
     if dphi <= 0:
-        # Isocratic
+        # Isocratic — dwell time doesn't affect isocratic elution
         k = 10 ** (params.log_k0 - params.s * run.phi_start)
         return params.t0 * (1 + k)
 
     tG = run.gradient_time_s
     b = params.s * dphi * params.t0 / tG
     k0_eff = 10 ** (params.log_k0 - params.s * run.phi_start)
-    # Gradient elution equation (Snyder)
-    tR = params.t0 * (1 + (1.0 / b) * math.log10(1 + b * k0_eff))
+
+    if dwell_time_s > 0 and b > 0:
+        # With dwell time correction (Eq 6.19):
+        # During dwell time, analyte migrates at k0_eff, reducing the effective
+        # k0 by the factor 10^(-b * t_d / t0).
+        dwell_factor = 10 ** (-b * dwell_time_s / params.t0)
+        tR = dwell_time_s + params.t0 * (
+            1 + (1.0 / b) * math.log10(1 + b * k0_eff * dwell_factor)
+        )
+    else:
+        # Standard gradient elution equation (Eq 6.17)
+        tR = params.t0 * (1 + (1.0 / b) * math.log10(1 + b * k0_eff))
+
     return tR
 
 

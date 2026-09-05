@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.schemas.common import ORMModel
 
@@ -109,6 +109,8 @@ class GradientSimulateRequest(BaseModel):
     calibration_runs: list[dict[str, Any]] | None = None
     dwell_volume_ml: float | None = None  # F1: system dwell volume
     dead_volume_ml: float | None = None  # F1: column dead volume
+    retention_model: str | None = None  # override model selection
+    retention_mechanism: str | None = None  # override mechanism
 
 
 class GradientSimulateOut(BaseModel):
@@ -360,6 +362,9 @@ class ResolutionMap1DRequest(BaseModel):
     percent_b_start: float = 5.0
     percent_b_end: float = 95.0
     column_type: str = "C18"
+    column_void_volume_ml: float = 0.4
+    dwell_volume_ml: float | None = None
+    dead_volume_ml: float | None = None
     suitability: SuitabilityCriteriaSchema | None = None
 
 
@@ -389,6 +394,9 @@ class ResolutionMap2DRequest(BaseModel):
     percent_b_start: float = 5.0
     percent_b_end: float = 95.0
     column_type: str = "C18"
+    column_void_volume_ml: float = 0.4
+    dwell_volume_ml: float | None = None
+    dead_volume_ml: float | None = None
     suitability: SuitabilityCriteriaSchema | None = None
 
 
