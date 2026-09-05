@@ -8,6 +8,8 @@ export interface AppSettings {
   lab_website: string | null;
   has_logo: boolean;
   logo_mime_type: string | null;
+  has_favicon: boolean;
+  favicon_mime_type: string | null;
   report_footer: string;
   registration_enabled: boolean;
   report_title_prefix: string | null;
@@ -53,6 +55,20 @@ export const adminApi = {
 
   deleteLogo: async () => {
     const { data } = await apiClient.delete<AppSettings>('/admin/logo');
+    return data;
+  },
+
+  uploadFavicon: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await apiClient.post<AppSettings>('/admin/favicon', formData, {
+      headers: { 'Content-Type': undefined },
+    });
+    return data;
+  },
+
+  deleteFavicon: async () => {
+    const { data } = await apiClient.delete<AppSettings>('/admin/favicon');
     return data;
   },
 

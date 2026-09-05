@@ -5,6 +5,7 @@ import { ThemeProvider } from '@/context/ThemeContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AppShell } from '@/components/AppShell';
+import { useFavicon } from '@/hooks/useFavicon';
 import { PredictorPage } from '@/pages/PredictorPage';
 import { CompoundsPage } from '@/pages/CompoundsPage';
 import { LoginPage } from '@/pages/LoginPage';
@@ -185,6 +186,7 @@ function AppRoutes() {
 }
 
 export default function App() {
+  useFavicon();
   return (
     <ErrorBoundary>
       <ThemeProvider>

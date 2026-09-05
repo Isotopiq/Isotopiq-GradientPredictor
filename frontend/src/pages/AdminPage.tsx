@@ -17,6 +17,7 @@ export function AdminPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const faviconInputRef = useRef<HTMLInputElement>(null);
   const [tab, setTab] = useState<Tab>('stats');
 
   const { data: settings, isLoading } = useQuery({
@@ -103,6 +104,31 @@ export function AdminPage() {
       toast.success('Logo removed');
     } catch {
       toast.error('Failed to remove logo');
+    }
+  };
+
+  const handleFaviconUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      await adminApi.uploadFavicon(file);
+      queryClient.invalidateQueries({ queryKey: ['admin-settings'] });
+      toast.success('Favicon uploaded');
+    } catch {
+      toast.error('Upload failed — image must be < 512KB (PNG/ICO/SVG)');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleFaviconDelete = async () => {
+    try {
+      await adminApi.deleteFavicon();
+      queryClient.invalidateQueries({ queryKey: ['admin-settings'] });
+      toast.success('Favicon removed');
+    } catch {
+      toast.error('Failed to remove favicon');
     }
   };
 
@@ -336,6 +362,45 @@ export function AdminPage() {
                 </button>
                 {settings.has_logo && (
                   <button onClick={handleLogoDelete} className="btn-ghost btn-sm text-destructive hover:bg-destructive/10">
+                    <Trash2 size={14} /> Remove
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Favicon */}
+          <div className="card-scientific">
+            <div className="flex items-center gap-2">
+              <ImageIcon size={16} className="text-accent" />
+              <h2 className="text-sm font-semibold">Favicon</h2>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Appears in the browser tab. Max 512KB. PNG, ICO, SVG, WebP, or JPEG.
+            </p>
+            <div className="mt-4 flex items-center gap-4">
+              <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-border bg-muted/50">
+                {settings.has_favicon ? (
+                  <img src="/api/v1/admin/favicon" alt="Favicon" className="max-h-12 max-w-12 object-contain" />
+                ) : (
+                  <div className="text-center text-xs text-muted-foreground">
+                    <ImageIcon className="mx-auto mb-1" size={16} /> None
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-col gap-2">
+                <input
+                  ref={faviconInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml,image/x-icon,image/vnd.microsoft.icon,image/ico"
+                  onChange={handleFaviconUpload}
+                  className="hidden"
+                />
+                <button onClick={() => faviconInputRef.current?.click()} disabled={uploading} className="btn-outline btn-sm">
+                  <Upload size={14} /> {uploading ? 'Uploading...' : 'Upload Favicon'}
+                </button>
+                {settings.has_favicon && (
+                  <button onClick={handleFaviconDelete} className="btn-ghost btn-sm text-destructive hover:bg-destructive/10">
                     <Trash2 size={14} /> Remove
                   </button>
                 )}

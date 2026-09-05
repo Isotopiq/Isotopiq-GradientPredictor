@@ -244,6 +244,30 @@ def _build_styles(theme: dict[str, colors.HexColor]) -> dict:
             fontSize=8, leading=11, textColor=theme["dark"],
             fontName="Courier",
         ),
+        "cell": ParagraphStyle(
+            "cell", parent=base["Normal"],
+            fontSize=9, leading=12, textColor=theme["dark"],
+            fontName="Helvetica",
+            wordWrap="LTR",
+        ),
+        "cell_small": ParagraphStyle(
+            "cell_small", parent=base["Normal"],
+            fontSize=8, leading=10, textColor=theme["dark"],
+            fontName="Helvetica",
+            wordWrap="LTR",
+        ),
+        "cell_mono": ParagraphStyle(
+            "cell_mono", parent=base["Normal"],
+            fontSize=7.5, leading=10, textColor=theme["dark"],
+            fontName="Courier",
+            wordWrap="LTR",
+        ),
+        "cell_header": ParagraphStyle(
+            "cell_header", parent=base["Normal"],
+            fontSize=9, leading=12, textColor=colors.white,
+            fontName="Helvetica-Bold",
+            wordWrap="LTR",
+        ),
         "cover_title": ParagraphStyle(
             "cover_title", parent=base["Title"],
             fontSize=28, leading=36, textColor=theme["accent"],
@@ -281,30 +305,69 @@ def _section_bar(title: str, styles: dict, theme: dict[str, colors.HexColor]) ->
     return bar
 
 
+def _wrap_cell(value: str, styles: dict, is_header: bool = False, is_mono: bool = False) -> Any:
+    """Wrap a cell value in a Paragraph for proper text wrapping.
+
+    Plain strings in ReportLab Tables don't wrap — they overflow.
+    Paragraphs respect wordWrap and column width automatically.
+    """
+    if isinstance(value, (Paragraph, Table, Image)):
+        return value
+    text = str(value) if value is not None else ""
+    # Escape XML special characters for ReportLab Paragraph
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    if is_header:
+        return Paragraph(text, styles["cell_header"])
+    if is_mono:
+        return Paragraph(text, styles["cell_mono"])
+    return Paragraph(text, styles["cell"])
+
+
 def _data_table(
     data: list[list[str]],
     col_widths: list[float],
     styles: dict,
     theme: dict[str, colors.HexColor],
+    mono_columns: set[int] | None = None,
 ) -> Table:
-    """Create a styled data table with header row and alternating rows."""
-    tbl = Table(data, colWidths=col_widths)
+    """Create a styled data table with header row, alternating rows, and text wrapping.
+
+    Args:
+        data: 2D list of cell values (strings or Paragraphs).
+        col_widths: Column widths in points.
+        styles: Style dict from _build_styles.
+        theme: Theme color dict.
+        mono_columns: Set of column indices (0-based) that should use monospace
+            font (e.g. SMILES columns). Defaults to empty set.
+    """
+    if mono_columns is None:
+        mono_columns = set()
+
+    # Wrap all cell values in Paragraphs for proper text wrapping
+    wrapped_data: list[list[Any]] = []
+    for row_idx, row in enumerate(data):
+        wrapped_row: list[Any] = []
+        for col_idx, cell in enumerate(row):
+            if row_idx == 0:
+                wrapped_row.append(_wrap_cell(cell, styles, is_header=True))
+            elif col_idx in mono_columns:
+                wrapped_row.append(_wrap_cell(cell, styles, is_mono=True))
+            else:
+                wrapped_row.append(_wrap_cell(cell, styles))
+        wrapped_data.append(wrapped_row)
+
+    tbl = Table(wrapped_data, colWidths=col_widths)
     style_cmds = [
         # Header
         ("BACKGROUND", (0, 0), (-1, 0), theme["accent"]),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, 0), 9),
         ("TOPPADDING", (0, 0), (-1, 0), 6),
         ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
         # Body
-        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-        ("FONTSIZE", (0, 1), (-1, -1), 9),
-        ("TEXTCOLOR", (0, 1), (-1, -1), theme["dark"]),
-        ("TOPPADDING", (0, 1), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 1), (-1, -1), 5),
-        ("LEFTPADDING", (0, 0), (-1, -1), 8),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 1), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 1), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
         # Grid
         ("LINEBELOW", (0, 0), (-1, 0), 0, colors.white),
         ("LINEBELOW", (0, 1), (-1, -2), 0.5, theme["border"]),
@@ -392,7 +455,14 @@ def _render_chromatogram(
     total_time_s: float,
     mpl_theme: dict[str, str],
 ) -> bytes:
-    """Render an XIC chromatogram with EMG peaks using matplotlib. Returns PNG bytes."""
+    """Render an XIC chromatogram with EMG peaks using matplotlib. Returns PNG bytes.
+
+    Uses smart label placement to prevent overlap:
+    - Labels are placed above the plot area with callout lines to peaks
+    - Labels are staggered vertically when peaks are close together
+    - Long labels are truncated
+    - Figure height adapts to the number of peaks
+    """
     if not peaks:
         fig, ax = plt.subplots(figsize=(7, 2.5), dpi=150)
         fig.patch.set_facecolor("white")
@@ -409,10 +479,18 @@ def _render_chromatogram(
     times = [i * total_time_s / (n_points - 1) for i in range(n_points)]
     times_min = [t / 60.0 for t in times]
 
-    fig, ax = plt.subplots(figsize=(7, 3), dpi=150)
+    # Sort peaks by RT for label placement
+    sorted_peaks = sorted(peaks, key=lambda p: p.get("rt_s", 0))
+
+    # Dynamic figure height: taller for more peaks
+    n_peaks = len(sorted_peaks)
+    fig_height = 3.0 if n_peaks <= 4 else (3.5 if n_peaks <= 8 else 4.0)
+
+    fig, ax = plt.subplots(figsize=(7, fig_height), dpi=150)
     fig.patch.set_facecolor("white")
 
-    for i, peak in enumerate(peaks):
+    # Plot peaks
+    for i, peak in enumerate(sorted_peaks):
         rt_s = peak.get("rt_s", 0)
         width_s = peak.get("width_s", 10)
         height = peak.get("height", 1.0)
@@ -424,26 +502,98 @@ def _render_chromatogram(
         ax.plot(times_min, values, color=color, linewidth=1.8, label=label)
         ax.fill_between(times_min, 0, values, color=color, alpha=0.15)
 
-        ax.axvline(x=rt_s / 60.0, color=color, linestyle=":", linewidth=0.8, alpha=0.5)
+    # Set y-axis limit with headroom for labels
+    ax.set_ylim(0, 1.45)
+    ax.set_xlim(0, total_time_s / 60.0)
+
+    # Smart label placement: stagger labels vertically and use callout lines
+    # Place labels in the upper portion of the plot (y > 1.0 in normalized height)
+    # Stagger between 3 levels to avoid overlap
+    label_levels = [1.35, 1.22, 1.09]
+    min_rt_gap = total_time_s / 60.0 * 0.06  # 6% of total time as minimum gap
+
+    placed_labels: list[dict[str, Any]] = []
+
+    for i, peak in enumerate(sorted_peaks):
+        rt_s = peak.get("rt_s", 0)
+        rt_min = rt_s / 60.0
+        label = peak.get("label", f"Peak {i+1}")
+        color = peak.get("color") or _MPEAK_COLORS[i % len(_MPEAK_COLORS)]
+
+        # Truncate long labels
+        max_label_len = 18
+        if len(label) > max_label_len:
+            label = label[:max_label_len - 1] + "…"
+
+        label_text = f"{label}\n{rt_min:.2f} min"
+
+        # Determine vertical level: check if previous label at level 0 is too close
+        level_idx = i % len(label_levels)
+        # Try to find a level that doesn't overlap with recent labels
+        for try_level in range(len(label_levels)):
+            level = label_levels[try_level]
+            overlap = False
+            for pl in placed_labels:
+                if abs(pl["rt_min"] - rt_min) < min_rt_gap and abs(pl["level"] - level) < 0.08:
+                    overlap = True
+                    break
+            if not overlap:
+                level_idx = try_level
+                break
+        else:
+            # All levels overlap — use the staggered one
+            level_idx = i % len(label_levels)
+
+        y_label = label_levels[level_idx]
+
+        # Draw callout line from peak top to label
+        peak_y = peak.get("height", 1.0) * 0.95
         ax.annotate(
-            f"{label}\n{rt_s/60:.2f} min",
-            xy=(rt_s / 60.0, height * 0.95),
-            xytext=(5, 5), textcoords="offset points",
-            fontsize=7, color=color, fontweight="bold",
+            "",
+            xy=(rt_min, peak_y),
+            xytext=(rt_min, y_label - 0.02),
+            arrowprops=dict(
+                arrowstyle="-",
+                color=color,
+                linewidth=0.6,
+                alpha=0.6,
+                linestyle=":",
+            ),
         )
+
+        # Place the label text
+        ha = "center"
+        # Adjust horizontal alignment if near edges
+        if rt_min < total_time_s / 60.0 * 0.08:
+            ha = "left"
+        elif rt_min > total_time_s / 60.0 * 0.92:
+            ha = "right"
+
+        ax.text(
+            rt_min, y_label, label_text,
+            fontsize=6.5, color=color, fontweight="bold",
+            ha=ha, va="bottom",
+            bbox=dict(boxstyle="round,pad=0.15", facecolor="white", edgecolor=color, linewidth=0.4, alpha=0.85),
+        )
+
+        placed_labels.append({"rt_min": rt_min, "level": y_label, "label": label})
 
     ax.set_xlabel("Time (min)", fontsize=9, color=mpl_theme["dark"])
     ax.set_ylabel("Intensity (XIC)", fontsize=9, color=mpl_theme["dark"])
     ax.set_title("Simulated XIC Chromatogram", fontsize=11, color=mpl_theme["dark"], fontweight="bold", pad=8)
-    ax.set_xlim(0, total_time_s / 60.0)
     ax.grid(True, color=mpl_theme["border"], linewidth=0.5, alpha=0.7)
     ax.tick_params(colors=mpl_theme["muted"], labelsize=8)
     for spine in ax.spines.values():
         spine.set_color(mpl_theme["border"])
         spine.set_linewidth(0.5)
 
-    if len(peaks) <= 6:
-        ax.legend(loc="upper right", fontsize=7, framealpha=0.9, ncol=1)
+    # Legend below the plot for many peaks, upper right for few
+    if n_peaks <= 6:
+        ax.legend(loc="upper right", fontsize=7, framealpha=0.9, ncol=1,
+                  bbox_to_anchor=(1.0, 0.95))
+    else:
+        ax.legend(loc="upper center", fontsize=6, framealpha=0.9,
+                  ncol=min(n_peaks, 4), bbox_to_anchor=(0.5, 1.02))
 
     plt.tight_layout()
     buf = io.BytesIO()
@@ -1043,7 +1193,7 @@ def export_method_pdf(
                 ["SMILES", compound_smiles],
                 ["InChIKey", compound.inchikey or "—"],
             ]
-            info_tbl = _data_table(info_data, [40 * mm, 130 * mm], styles, theme)
+            info_tbl = _data_table(info_data, [40 * mm, 130 * mm], styles, theme, mono_columns={1})
             story.append(info_tbl)
             story.append(Spacer(1, 8))
 
@@ -1063,8 +1213,8 @@ def export_method_pdf(
             comp_data = [["#", "SMILES", "Name"]]
             for i, smi in enumerate(compounds_smiles):
                 name = (compound_names[i] if compound_names and i < len(compound_names) else "—")
-                comp_data.append([str(i + 1), smi[:80] + ("..." if len(smi) > 80 else ""), name])
-            comp_tbl = _data_table(comp_data, [10 * mm, 120 * mm, 40 * mm], styles, theme)
+                comp_data.append([str(i + 1), smi, name])
+            comp_tbl = _data_table(comp_data, [10 * mm, 120 * mm, 40 * mm], styles, theme, mono_columns={1})
             story.append(comp_tbl)
 
     # --- Method Parameters ---
@@ -1606,8 +1756,6 @@ def export_batch_analysis_pdf(
         comp_data = [["#", "Name/SMILES", "RT (min)", "Width (s)", "Status"]]
         for i, r in enumerate(results):
             name = r.get("name") or r.get("smiles", "—")
-            if len(name) > 50:
-                name = name[:50] + "..."
             rt = r.get("rt_s")
             width = r.get("width_s")
             status = r.get("status", "OK")
@@ -1618,7 +1766,7 @@ def export_batch_analysis_pdf(
                 f"{width:.1f}" if width else "—",
                 status,
             ])
-        story.append(_data_table(comp_data, [10 * mm, 80 * mm, 25 * mm, 25 * mm, 30 * mm], styles, theme))
+        story.append(_data_table(comp_data, [10 * mm, 80 * mm, 25 * mm, 25 * mm, 30 * mm], styles, theme, mono_columns={1}))
 
     # Simulated chromatogram
     if sections.chromatogram and results:
@@ -1660,8 +1808,6 @@ def export_batch_analysis_pdf(
             flag_data = [["#", "Name/SMILES", "RT (min)", "Issue"]]
             for i, r in enumerate(flagged):
                 name = r.get("name") or r.get("smiles", "—")
-                if len(name) > 50:
-                    name = name[:50] + "..."
                 rt = r.get("rt_s")
                 flag_data.append([
                     str(i + 1),
@@ -1669,7 +1815,7 @@ def export_batch_analysis_pdf(
                     f"{rt / 60:.2f}" if rt else "—",
                     r.get("status", "—"),
                 ])
-            story.append(_data_table(flag_data, [10 * mm, 80 * mm, 30 * mm, 50 * mm], styles, theme))
+            story.append(_data_table(flag_data, [10 * mm, 80 * mm, 30 * mm, 50 * mm], styles, theme, mono_columns={1}))
         else:
             story.append(Spacer(1, 8))
             story.append(Paragraph(

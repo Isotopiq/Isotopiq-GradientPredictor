@@ -21,7 +21,9 @@ from app.services.audit_service import (
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/svg+xml"}
+ALLOWED_FAVICON_TYPES = {"image/png", "image/jpeg", "image/webp", "image/svg+xml", "image/x-icon", "image/vnd.microsoft.icon", "image/ico"}
 MAX_LOGO_SIZE = 2 * 1024 * 1024  # 2 MB
+MAX_FAVICON_SIZE = 512 * 1024  # 512 KB
 
 
 class AppSettingsOut(BaseModel):
@@ -31,6 +33,8 @@ class AppSettingsOut(BaseModel):
     lab_website: str | None = None
     has_logo: bool
     logo_mime_type: str | None = None
+    has_favicon: bool
+    favicon_mime_type: str | None = None
     report_footer: str
     registration_enabled: bool
     report_title_prefix: str | None = None
@@ -79,6 +83,8 @@ async def get_settings(db: DBSession, current: CurrentUser) -> AppSettingsOut:
         lab_website=settings.lab_website,
         has_logo=settings.logo_bytes is not None,
         logo_mime_type=settings.logo_mime_type,
+        has_favicon=settings.favicon_bytes is not None,
+        favicon_mime_type=settings.favicon_mime_type,
         report_footer=settings.report_footer,
         registration_enabled=settings.registration_enabled,
         report_title_prefix=settings.report_title_prefix,
@@ -126,6 +132,8 @@ async def update_settings(
         lab_website=settings.lab_website,
         has_logo=settings.logo_bytes is not None,
         logo_mime_type=settings.logo_mime_type,
+        has_favicon=settings.favicon_bytes is not None,
+        favicon_mime_type=settings.favicon_mime_type,
         report_footer=settings.report_footer,
         registration_enabled=settings.registration_enabled,
         report_title_prefix=settings.report_title_prefix,
@@ -167,6 +175,8 @@ async def upload_logo(
         lab_website=settings.lab_website,
         has_logo=True,
         logo_mime_type=settings.logo_mime_type,
+        has_favicon=settings.favicon_bytes is not None,
+        favicon_mime_type=settings.favicon_mime_type,
         report_footer=settings.report_footer,
         registration_enabled=settings.registration_enabled,
         report_title_prefix=settings.report_title_prefix,
@@ -192,6 +202,8 @@ async def delete_logo(db: DBSession, current: CurrentUser) -> AppSettingsOut:
         lab_website=settings.lab_website,
         has_logo=False,
         logo_mime_type=None,
+        has_favicon=settings.favicon_bytes is not None,
+        favicon_mime_type=settings.favicon_mime_type,
         report_footer=settings.report_footer,
         registration_enabled=settings.registration_enabled,
         report_title_prefix=settings.report_title_prefix,
@@ -208,6 +220,94 @@ async def get_logo(db: DBSession) -> Response:
     if settings.logo_bytes is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No logo set")
     return Response(content=settings.logo_bytes, media_type=settings.logo_mime_type or "image/png")
+
+
+# ---------------------------------------------------------------------------
+# Favicon upload / delete / serve
+# ---------------------------------------------------------------------------
+
+@router.post("/favicon", response_model=AppSettingsOut)
+async def upload_favicon(
+    db: DBSession,
+    current: CurrentUser,
+    file: UploadFile = File(...),
+) -> AppSettingsOut:
+    """Upload a favicon image. Admin only."""
+    await _require_admin(current)
+
+    # Accept both standard and non-standard MIME types for favicons
+    mime = file.content_type or ""
+    # Some browsers send image/x-icon or image/vnd.microsoft.icon for .ico files
+    if mime not in ALLOWED_FAVICON_TYPES:
+        # Also allow generic image/* as a fallback
+        if not mime.startswith("image/"):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"Invalid image type. Allowed: {', '.join(ALLOWED_FAVICON_TYPES)}",
+            )
+
+    contents = await file.read()
+    if len(contents) > MAX_FAVICON_SIZE:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Favicon too large (max 512 KB)")
+
+    settings = await _get_or_create_settings(db)
+    settings.favicon_bytes = contents
+    settings.favicon_mime_type = mime or "image/png"
+    await db.commit()
+    await db.refresh(settings)
+
+    return AppSettingsOut(
+        lab_name=settings.lab_name,
+        lab_subtitle=settings.lab_subtitle,
+        lab_address=settings.lab_address,
+        lab_website=settings.lab_website,
+        has_logo=settings.logo_bytes is not None,
+        logo_mime_type=settings.logo_mime_type,
+        has_favicon=True,
+        favicon_mime_type=settings.favicon_mime_type,
+        report_footer=settings.report_footer,
+        registration_enabled=settings.registration_enabled,
+        report_title_prefix=settings.report_title_prefix,
+        cover_page_text=settings.cover_page_text,
+        report_theme=settings.report_theme,
+        include_cover_page_default=settings.include_cover_page_default,
+    )
+
+
+@router.delete("/favicon", response_model=AppSettingsOut)
+async def delete_favicon(db: DBSession, current: CurrentUser) -> AppSettingsOut:
+    """Remove the favicon. Admin only."""
+    await _require_admin(current)
+    settings = await _get_or_create_settings(db)
+    settings.favicon_bytes = None
+    settings.favicon_mime_type = None
+    await db.commit()
+    await db.refresh(settings)
+    return AppSettingsOut(
+        lab_name=settings.lab_name,
+        lab_subtitle=settings.lab_subtitle,
+        lab_address=settings.lab_address,
+        lab_website=settings.lab_website,
+        has_logo=settings.logo_bytes is not None,
+        logo_mime_type=settings.logo_mime_type,
+        has_favicon=False,
+        favicon_mime_type=None,
+        report_footer=settings.report_footer,
+        registration_enabled=settings.registration_enabled,
+        report_title_prefix=settings.report_title_prefix,
+        cover_page_text=settings.cover_page_text,
+        report_theme=settings.report_theme,
+        include_cover_page_default=settings.include_cover_page_default,
+    )
+
+
+@router.get("/favicon")
+async def get_favicon(db: DBSession) -> Response:
+    """Serve the favicon. Public (no auth) — used by the browser tab."""
+    settings = await _get_or_create_settings(db)
+    if settings.favicon_bytes is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No favicon set")
+    return Response(content=settings.favicon_bytes, media_type=settings.favicon_mime_type or "image/png")
 
 
 @router.get("/public-settings")

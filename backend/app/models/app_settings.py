@@ -20,6 +20,10 @@ class AppSettings(Base, UUIDPK, Timestamped):
     logo_bytes: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     logo_mime_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
+    # Favicon (stored as raw bytes — PNG, ICO, SVG, etc.)
+    favicon_bytes: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    favicon_mime_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
     # Report footer text
     report_footer: Mapped[str] = mapped_column(
         Text, nullable=False,
