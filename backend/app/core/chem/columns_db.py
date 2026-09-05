@@ -1554,6 +1554,59 @@ for _fam in _FAMILIES:
 # Query functions
 # ---------------------------------------------------------------------------
 
+def _levenshtein(a: str, b: str) -> int:
+    """Compute Levenshtein edit distance between two strings."""
+    if len(a) < len(b):
+        a, b = b, a
+    if len(b) == 0:
+        return len(a)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a):
+        curr = [i + 1]
+        for j, cb in enumerate(b):
+            cost = 0 if ca == cb else 1
+            curr.append(min(prev[j + 1] + 1, curr[j] + 1, prev[j] + cost))
+        prev = curr
+    return prev[-1]
+
+
+def _fuzzy_token_match(token: str, field: str, threshold: float = 0.6) -> bool:
+    """Check if a token fuzzy-matches any word in a field.
+
+    Uses Levenshtein distance normalized by the longer string length.
+    Also checks substring containment (handles partial matches like
+    "zhilic" containing "hilic").
+    """
+    field_lower = field.lower()
+    token_lower = token.lower()
+
+    # 1. Substring check (either direction) — catches "zhilic" → "hilic"
+    if token_lower in field_lower or field_lower in token_lower:
+        return True
+
+    # 2. Word-level edit distance
+    field_words = field_lower.replace("-", " ").replace("_", " ").split()
+    for word in field_words:
+        # Skip very short words
+        if len(word) < 2:
+            continue
+        max_len = max(len(token_lower), len(word))
+        if max_len == 0:
+            continue
+        dist = _levenshtein(token_lower, word)
+        similarity = 1.0 - dist / max_len
+        if similarity >= threshold:
+            return True
+
+    return False
+
+
+def _fuzzy_match_tokens(col: ColumnSpec, tokens: list[str]) -> bool:
+    """Check if ALL tokens fuzzy-match across name, brand, chemistry fields."""
+    fields = [col.name, col.brand, col.chemistry]
+    return all(any(_fuzzy_token_match(token, f) for f in fields) for token in tokens)
+
+
 def list_columns(
     chemistry: str | None = None,
     brand: str | None = None,
@@ -1582,7 +1635,10 @@ def list_columns(
             def matches_all(c: ColumnSpec) -> bool:
                 combined = f"{c.name} {c.brand} {c.chemistry}".lower()
                 return all(t in combined for t in tokens)
-            result = [c for c in result if matches_all(c)]
+            exact = [c for c in result if matches_all(c)]
+            # Fuzzy fallback when exact match fails (handles misspellings
+            # like "zhilic" → "zic-hilic")
+            result = exact or [c for c in result if _fuzzy_match_tokens(c, tokens)]
     total = len(result)
     return result[offset:offset + limit], total
 
