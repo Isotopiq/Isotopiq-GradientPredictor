@@ -52,6 +52,10 @@ export function AdminPage() {
         lab_website: settings.lab_website || '',
         report_footer: settings.report_footer,
         registration_enabled: settings.registration_enabled,
+        report_title_prefix: settings.report_title_prefix || '',
+        cover_page_text: settings.cover_page_text || '',
+        report_theme: settings.report_theme || 'blue',
+        include_cover_page_default: settings.include_cover_page_default,
       });
     }
   }, [settings]);
@@ -401,6 +405,68 @@ export function AdminPage() {
                 />
               </button>
             </label>
+          </div>
+
+          {/* PDF Report Configuration */}
+          <div className="card-scientific">
+            <div className="flex items-center gap-2">
+              <FileText size={16} className="text-accent" />
+              <h2 className="text-sm font-semibold">PDF Report Configuration</h2>
+            </div>
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="label">Report Title Prefix</label>
+                <input
+                  className="input mt-1"
+                  placeholder="e.g. Confidential — Acme Labs"
+                  value={form.report_title_prefix || ''}
+                  onChange={(e) => setForm({ ...form, report_title_prefix: e.target.value })}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">Prepended to every PDF report title</p>
+              </div>
+              <div>
+                <label className="label">Report Theme</label>
+                <select
+                  className="input mt-1"
+                  value={form.report_theme || 'blue'}
+                  onChange={(e) => setForm({ ...form, report_theme: e.target.value })}
+                >
+                  <option value="blue">Blue</option>
+                  <option value="green">Green</option>
+                  <option value="slate">Slate</option>
+                  <option value="burgundy">Burgundy</option>
+                </select>
+                <p className="mt-1 text-xs text-muted-foreground">Color palette for all PDF reports</p>
+              </div>
+              <label className="flex items-center justify-between cursor-pointer">
+                <div>
+                  <span className="text-sm font-medium">Include Cover Page by Default</span>
+                  <p className="text-xs text-muted-foreground">Pre-checks the cover page option in export dialogs</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={form.include_cover_page_default ?? false}
+                  onClick={() => setForm({ ...form, include_cover_page_default: !form.include_cover_page_default })}
+                  className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${form.include_cover_page_default ? 'bg-accent' : 'bg-muted'}`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${form.include_cover_page_default ? 'translate-x-4' : 'translate-x-0.5'}`}
+                  />
+                </button>
+              </label>
+              {form.include_cover_page_default && (
+                <div>
+                  <label className="label">Cover Page Text</label>
+                  <textarea
+                    className="input mt-1 h-20 text-xs"
+                    placeholder="Text to display on the cover page of every report"
+                    value={form.cover_page_text || ''}
+                    onChange={(e) => setForm({ ...form, cover_page_text: e.target.value })}
+                  />
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex justify-end">

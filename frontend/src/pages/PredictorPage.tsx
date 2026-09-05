@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, Check, Plus, Trash2, RefreshCw, Layers, AlertTriangle, ListPlus, FolderOpen, X, Edit3, Pencil, FileText, LayoutTemplate, Zap, ShieldCheck, FlaskConical, TrendingUp, BarChart3, Settings2 } from 'lucide-react';
+import { Save, Check, Plus, Trash2, RefreshCw, Layers, AlertTriangle, ListPlus, FolderOpen, X, Edit3, Pencil, FileText, LayoutTemplate, Zap, ShieldCheck, FlaskConical, TrendingUp, BarChart3, Settings2, Download } from 'lucide-react';
 import { StructureInput } from '@/components/StructureInput';
+import { ExportDialog } from '@/components/ExportDialog';
+import { exportApi } from '@/api/export';
 import { CompoundPicker } from '@/components/CompoundPicker';
 import { PropertyPanel } from '@/components/PropertyPanel';
 import { MethodSuggestionCard } from '@/components/MethodSuggestionCard';
@@ -94,6 +96,7 @@ export function PredictorPage() {
   const [showSaveMethod, setShowSaveMethod] = useState(false);
   const [methodName, setMethodName] = useState('');
   const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+  const [pdfExportOpen, setPdfExportOpen] = useState(false);
 
   // Column override + multi-compound state
   const [columnChoice, setColumnChoice] = useState('');
@@ -675,6 +678,43 @@ export function PredictorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [multiResult, gradientTable, simResult, flowRate, ph, temperature, columnChoice, autoAdjustGradient, commercialColumnId]);
 
+  const handlePdfExport = async (sections: Record<string, boolean>) => {
+    if (gradientTable.length === 0 && !suggestion && !multiResult) {
+      toast.error('Generate a method prediction first');
+      return;
+    }
+    const colType = suggestion?.column?.column_type
+      || multiResult?.per_compound?.find((pc) => !pc.error)?.column?.column_type
+      || columnChoice || 'C18';
+    const additive = suggestion?.additive?.additive || '0.1% Formic Acid';
+    const mobilePhaseA = suggestion?.gradient ? `Water + ${additive}` : 'Water + 0.1% Formic Acid';
+    const compoundSmiles = compounds.map((c) => c.smiles).filter((s) => s && s.trim());
+    const compoundNames = compounds.map((c) => c.name).filter((n): n is string => !!n);
+    try {
+      await exportApi.predictorPdf({
+        name: methodName.trim() || (compounds.length > 1
+          ? `Multi-compound method (${compounds.length} compounds)`
+          : activeCompound?.name || 'Predicted Method'),
+        column_type: colType,
+        ph,
+        flow_rate_ml_min: flowRate,
+        temperature_c: temperature,
+        mobile_phase_a: mobilePhaseA,
+        mobile_phase_b: 'Acetonitrile',
+        additive,
+        gradient_table: gradientTable,
+        compounds_smiles: compoundSmiles,
+        compound_names: compoundNames.length > 0 ? compoundNames : undefined,
+        dwell_volume_ml: dwellVolume || undefined,
+        dead_volume_ml: deadVolume || undefined,
+        sections,
+      });
+      toast.success('PDF exported');
+    } catch {
+      toast.error('PDF export failed');
+    }
+  };
+
   const handleSaveMethod = async () => {
     if (gradientTable.length === 0 && !suggestion && !multiResult) {
       toast.error('Generate a method prediction first');
@@ -823,6 +863,14 @@ export function PredictorPage() {
             ) : (
               <><Save size={14} /> Save Method</>
             )}
+          </button>
+        )}
+        {(gradientTable.length > 0 || suggestion || multiResult) && (
+          <button
+            onClick={() => setPdfExportOpen(true)}
+            className="btn-outline btn-sm"
+          >
+            <Download size={14} /> Export PDF
           </button>
         )}
       </div>
@@ -1620,6 +1668,25 @@ export function PredictorPage() {
           </div>
         </div>
       )}
+
+      <ExportDialog
+        open={pdfExportOpen}
+        onClose={() => setPdfExportOpen(false)}
+        title="Export Predictor PDF"
+        sections={[
+          { key: 'method_parameters', label: 'Method Parameters', default: true },
+          { key: 'gradient_program', label: 'Gradient Program (chart + table)', default: true },
+          { key: 'compound_info', label: 'Compound Information', default: true },
+          { key: 'chromatogram', label: 'Simulated Chromatogram', default: true },
+          { key: 'resolution_matrix', label: 'Resolution Matrix', default: false },
+          { key: 'robustness', label: 'Robustness Analysis', default: false },
+          { key: 'optimization', label: 'Optimization Results', default: false },
+          { key: 'method_transfer', label: 'Method Transfer Info', default: false },
+          { key: 'cover_page', label: 'Cover Page', default: false },
+          { key: 'disclaimer', label: 'Disclaimer', default: true },
+        ]}
+        onExport={handlePdfExport}
+      />
     </div>
   );
 }

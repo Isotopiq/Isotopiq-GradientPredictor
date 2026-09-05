@@ -7,8 +7,10 @@ import {
 } from 'lucide-react';
 import { methodsApi } from '@/api/methods';
 import { apiClient } from '@/api/client';
+import { exportApi } from '@/api/export';
 import { GradientChart } from '@/components/GradientChart';
 import { ChromatogramPreview } from '@/components/ChromatogramPreview';
+import { ExportDialog, type ExportSection } from '@/components/ExportDialog';
 import { EmptyState } from '@/components/EmptyState';
 import { Skeleton } from '@/components/Skeleton';
 import { toast } from 'sonner';
@@ -22,6 +24,7 @@ const PEAK_COLORS = [
 export function MethodLibraryPage() {
   const [selected, setSelected] = useState<Method | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [pdfExportOpen, setPdfExportOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -242,29 +245,31 @@ export function MethodLibraryPage() {
 
   const [includeChromatogram, setIncludeChromatogram] = useState(false);
 
-  const handleExport = useCallback(async (id: string, format: string, ext: string, withChromatogram: boolean = false) => {
-    const includeChroma = withChromatogram || includeChromatogram;
+  const handlePdfExport = useCallback(async (sections: Record<string, boolean>) => {
+    if (!selected) return;
     try {
-      const resp = await apiClient.get(`/export/method/${id}`, {
-        params: { format, include_chromatogram: includeChroma ? 'true' : 'false' },
-        responseType: 'blob',
-      });
-      const url = URL.createObjectURL(resp.data);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `method_${id}.${ext}`;
-      a.click();
-      URL.revokeObjectURL(url);
+      await exportApi.methodPdf(selected.id, sections);
+      toast.success('PDF exported');
+    } catch {
+      toast.error('PDF export failed');
+    }
+  }, [selected]);
+
+  const handleExport = useCallback(async (id: string, format: string, ext: string) => {
+    try {
+      if (format === 'csv') {
+        await exportApi.methodCsv(id);
+      } else if (format === 'agilent' || format === 'waters' || format === 'thermo') {
+        await exportApi.methodInstrument(id, format, ext);
+      }
       toast.success(`Exported as ${ext.toUpperCase()}`);
       setExportOpen(false);
     } catch {
       toast.error('Export failed');
     }
-  }, [includeChromatogram]);
+  }, []);
 
   const exportFormats = [
-    { label: 'PDF Report', format: 'pdf', ext: 'pdf' },
-    { label: 'PDF + Chromatogram', format: 'pdf', ext: 'pdf', withChromatogram: true },
     { label: 'CSV', format: 'csv', ext: 'csv' },
     { label: 'Agilent (.m)', format: 'agilent', ext: 'm' },
     { label: 'Waters (.mth)', format: 'waters', ext: 'mth' },
@@ -443,12 +448,18 @@ export function MethodLibraryPage() {
                               Share
                             </button>
                           )}
+                          <button
+                            onClick={() => setPdfExportOpen(true)}
+                            className="btn-outline btn-sm"
+                          >
+                            <Download size={14} className="mr-1" /> Export PDF
+                          </button>
                           <div className="relative" ref={exportRef}>
                             <button
                               onClick={() => setExportOpen(!exportOpen)}
                               className="btn-outline btn-sm"
                             >
-                              <Download size={14} className="mr-1" /> Export
+                              <Download size={14} className="mr-1" /> Other
                               <ChevronDown size={12} className="ml-1" />
                             </button>
                             {exportOpen && (
@@ -456,23 +467,12 @@ export function MethodLibraryPage() {
                                 {exportFormats.map((f, idx) => (
                                   <button
                                     key={`${f.format}-${idx}`}
-                                    onClick={() => handleExport(selected.id, f.format, f.ext, (f as { withChromatogram?: boolean }).withChromatogram === true)}
+                                    onClick={() => handleExport(selected.id, f.format, f.ext)}
                                     className="flex w-full items-center gap-2 px-3 py-2 text-xs hover:bg-muted"
                                   >
                                     <Download size={12} /> {f.label}
                                   </button>
                                 ))}
-                                <div className="border-t border-border px-3 py-2">
-                                  <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      checked={includeChromatogram}
-                                      onChange={(e) => setIncludeChromatogram(e.target.checked)}
-                                      className="rounded border-border"
-                                    />
-                                    Include XIC chromatogram in all PDFs
-                                  </label>
-                                </div>
                               </div>
                             )}
                           </div>
@@ -719,6 +719,25 @@ export function MethodLibraryPage() {
           </div>
         </div>
       )}
+
+      <ExportDialog
+        open={pdfExportOpen}
+        onClose={() => setPdfExportOpen(false)}
+        title="Export Method PDF"
+        sections={[
+          { key: 'method_parameters', label: 'Method Parameters', default: true },
+          { key: 'gradient_program', label: 'Gradient Program (chart + table)', default: true },
+          { key: 'compound_info', label: 'Compound Information', default: true },
+          { key: 'chromatogram', label: 'Simulated Chromatogram', default: false },
+          { key: 'resolution_matrix', label: 'Resolution Matrix', default: false },
+          { key: 'robustness', label: 'Robustness Analysis', default: false },
+          { key: 'optimization', label: 'Optimization Results', default: false },
+          { key: 'method_transfer', label: 'Method Transfer Info', default: false },
+          { key: 'cover_page', label: 'Cover Page', default: false },
+          { key: 'disclaimer', label: 'Disclaimer', default: true },
+        ]}
+        onExport={handlePdfExport}
+      />
     </div>
   );
 }

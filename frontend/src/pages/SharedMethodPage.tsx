@@ -2,16 +2,30 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { methodsApi } from '@/api/methods';
+import { exportApi } from '@/api/export';
 import { GradientChart } from '@/components/GradientChart';
+import { ExportDialog } from '@/components/ExportDialog';
 import { Logo } from '@/components/Logo';
 import { Skeleton } from '@/components/Skeleton';
-import { Copy, BookMarked } from 'lucide-react';
+import { Copy, BookMarked, Download } from 'lucide-react';
 import { toast } from 'sonner';
+import { useState } from 'react';
 
 export function SharedMethodPage() {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [pdfExportOpen, setPdfExportOpen] = useState(false);
+
+  const handlePdfExport = async (sections: Record<string, boolean>) => {
+    if (!token) return;
+    try {
+      await exportApi.sharedPdf(token, sections);
+      toast.success('PDF exported');
+    } catch {
+      toast.error('PDF export failed');
+    }
+  };
 
   const { data: method, isLoading, error } = useQuery({
     queryKey: ['shared-method', token],
@@ -45,19 +59,27 @@ export function SharedMethodPage() {
       <header className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-3">
           <Logo />
-          {user ? (
+          <div className="flex items-center gap-2">
             <button
-              className="btn-primary btn-sm"
-              onClick={() => forkMutation.mutate()}
-              disabled={forkMutation.isPending}
+              onClick={() => setPdfExportOpen(true)}
+              className="btn-outline btn-sm"
             >
-              <Copy size={14} className="mr-1" /> Fork to My Library
+              <Download size={14} className="mr-1" /> Export PDF
             </button>
-          ) : (
-            <button className="btn-primary btn-sm" onClick={() => navigate('/login')}>
-              <BookMarked size={14} className="mr-1" /> Log in to Fork
-            </button>
-          )}
+            {user ? (
+              <button
+                className="btn-primary btn-sm"
+                onClick={() => forkMutation.mutate()}
+                disabled={forkMutation.isPending}
+              >
+                <Copy size={14} className="mr-1" /> Fork to My Library
+              </button>
+            ) : (
+              <button className="btn-primary btn-sm" onClick={() => navigate('/login')}>
+                <BookMarked size={14} className="mr-1" /> Log in to Fork
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -116,6 +138,22 @@ export function SharedMethodPage() {
           Predictions are estimates — verify experimentally before production use.
         </p>
       </div>
+
+      <ExportDialog
+        open={pdfExportOpen}
+        onClose={() => setPdfExportOpen(false)}
+        title="Export Shared Method PDF"
+        sections={[
+          { key: 'method_parameters', label: 'Method Parameters', default: true },
+          { key: 'gradient_program', label: 'Gradient Program (chart + table)', default: true },
+          { key: 'compound_info', label: 'Compound Information', default: true },
+          { key: 'chromatogram', label: 'Simulated Chromatogram', default: true },
+          { key: 'resolution_matrix', label: 'Resolution Matrix', default: false },
+          { key: 'cover_page', label: 'Cover Page', default: false },
+          { key: 'disclaimer', label: 'Disclaimer', default: true },
+        ]}
+        onExport={handlePdfExport}
+      />
     </div>
   );
 }

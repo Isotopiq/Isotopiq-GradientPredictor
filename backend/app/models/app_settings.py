@@ -1,12 +1,10 @@
 """Application settings ORM model (singleton key-value store for admin-configurable settings)."""
 from __future__ import annotations
 
-import uuid
-
 from sqlalchemy import Boolean, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, Timestamped, UUIDPK
+from app.models.base import UUIDPK, Base, Timestamped
 
 
 class AppSettings(Base, UUIDPK, Timestamped):
@@ -32,12 +30,20 @@ class AppSettings(Base, UUIDPK, Timestamped):
     # Allow admin to disable new user registration
     registration_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
+    # PDF report configuration
+    report_title_prefix: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    cover_page_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    report_theme: Mapped[str] = mapped_column(String(32), nullable=False, default="blue")
+    include_cover_page_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
     @classmethod
-    def default(cls) -> "AppSettings":
+    def default(cls) -> AppSettings:
         return cls(
             lab_name="IsotopiQ",
             lab_subtitle="LC-MS Method Prediction Suite",
             report_footer="Predictions are estimates derived from physicochemical heuristics and statistical models. "
                           "They require experimental verification before use in regulated or production analytical work.",
             registration_enabled=True,
+            report_theme="blue",
+            include_cover_page_default=False,
         )

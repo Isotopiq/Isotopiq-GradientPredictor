@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Upload, FileText, Layers, Download } from 'lucide-react';
 import { methodsApi } from '@/api/methods';
+import { exportApi } from '@/api/export';
+import { ExportDialog } from '@/components/ExportDialog';
 import { parseCompoundCsv, parseSdf } from '@/lib/sdfParser';
 import { MoleculeThumbnail } from '@/components/MoleculeViewer';
 import { EmptyState } from '@/components/EmptyState';
@@ -18,6 +20,36 @@ export function BatchAnalysisPage() {
   const [compounds, setCompounds] = useState<ParsedCompound[]>([]);
   const [results, setResults] = useState<MultiCompoundSuggestion | null>(null);
   const [fileName, setFileName] = useState('');
+  const [pdfExportOpen, setPdfExportOpen] = useState(false);
+
+  const handlePdfExport = async (sections: Record<string, boolean>) => {
+    if (!results) return;
+    const batchResults = (results.per_compound || []).map((pc, i) => ({
+      name: compounds[i]?.name || `Compound ${i + 1}`,
+      smiles: compounds[i]?.smiles || '',
+      rt_s: pc.predicted_rt_s || 0,
+      width_s: pc.peak_width_s || 10,
+      status: pc.error ? 'Error' : 'OK',
+    }));
+    try {
+      await exportApi.batchAnalysisPdf(
+        {
+          method_params: {
+            column_type: results.per_compound?.find((pc) => !pc.error)?.column?.column_type || 'C18',
+            ph: 2.7,
+            flow_rate_ml_min: 0.4,
+            temperature_c: 30,
+          },
+          compounds: compounds.map((c) => ({ name: c.name, smiles: c.smiles })),
+          results: batchResults,
+        },
+        sections,
+      );
+      toast.success('PDF exported');
+    } catch {
+      toast.error('PDF export failed');
+    }
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -184,9 +216,14 @@ export function BatchAnalysisPage() {
                   {results.per_compound.length} compounds • {results.co_elution_count} co-elution risks detected
                 </p>
               </div>
-              <button className="btn-outline btn-sm" onClick={exportResults}>
-                <Download size={14} className="mr-1" /> Export CSV
-              </button>
+              <div className="flex items-center gap-2">
+                <button className="btn-outline btn-sm" onClick={exportResults}>
+                  <Download size={14} className="mr-1" /> Export CSV
+                </button>
+                <button className="btn-outline btn-sm" onClick={() => setPdfExportOpen(true)}>
+                  <Download size={14} className="mr-1" /> Export PDF
+                </button>
+              </div>
             </div>
 
             <div className="overflow-x-auto">
@@ -275,6 +312,21 @@ export function BatchAnalysisPage() {
           description="Upload a CSV or SDF file to start batch analysis"
         />
       )}
+
+      <ExportDialog
+        open={pdfExportOpen}
+        onClose={() => setPdfExportOpen(false)}
+        title="Export Batch Analysis PDF"
+        sections={[
+          { key: 'method_parameters', label: 'Method Parameters', default: true },
+          { key: 'compound_table', label: 'Compound Results Table', default: true },
+          { key: 'chromatogram', label: 'Simulated Chromatogram', default: true },
+          { key: 'flagged_compounds', label: 'Flagged Compounds', default: true },
+          { key: 'cover_page', label: 'Cover Page', default: false },
+          { key: 'disclaimer', label: 'Disclaimer', default: true },
+        ]}
+        onExport={handlePdfExport}
+      />
     </div>
   );
 }

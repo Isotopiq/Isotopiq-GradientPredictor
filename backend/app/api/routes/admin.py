@@ -1,17 +1,22 @@
 """Admin routes: app settings, logo upload, user management."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, status
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
 from pydantic import BaseModel
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import CurrentUser, DBSession
 from app.models.app_settings import AppSettings
 from app.models.user import User
 from app.schemas.auth import AdminUserOut, AdminUserUpdate
-from app.services.audit_service import log_action, list_audit_logs, audit_log_to_dict, clear_audit_logs
+from app.services.audit_service import (
+    audit_log_to_dict,
+    clear_audit_logs,
+    list_audit_logs,
+    log_action,
+)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -28,6 +33,10 @@ class AppSettingsOut(BaseModel):
     logo_mime_type: str | None = None
     report_footer: str
     registration_enabled: bool
+    report_title_prefix: str | None = None
+    cover_page_text: str | None = None
+    report_theme: str = "blue"
+    include_cover_page_default: bool = False
 
 
 class AppSettingsUpdate(BaseModel):
@@ -37,6 +46,10 @@ class AppSettingsUpdate(BaseModel):
     lab_website: str | None = None
     report_footer: str | None = None
     registration_enabled: bool | None = None
+    report_title_prefix: str | None = None
+    cover_page_text: str | None = None
+    report_theme: str | None = None
+    include_cover_page_default: bool | None = None
 
 
 async def _require_admin(user: User) -> None:
@@ -68,6 +81,10 @@ async def get_settings(db: DBSession, current: CurrentUser) -> AppSettingsOut:
         logo_mime_type=settings.logo_mime_type,
         report_footer=settings.report_footer,
         registration_enabled=settings.registration_enabled,
+        report_title_prefix=settings.report_title_prefix,
+        cover_page_text=settings.cover_page_text,
+        report_theme=settings.report_theme,
+        include_cover_page_default=settings.include_cover_page_default,
     )
 
 
@@ -92,6 +109,14 @@ async def update_settings(
         settings.report_footer = data.report_footer
     if data.registration_enabled is not None:
         settings.registration_enabled = data.registration_enabled
+    if data.report_title_prefix is not None:
+        settings.report_title_prefix = data.report_title_prefix
+    if data.cover_page_text is not None:
+        settings.cover_page_text = data.cover_page_text
+    if data.report_theme is not None:
+        settings.report_theme = data.report_theme
+    if data.include_cover_page_default is not None:
+        settings.include_cover_page_default = data.include_cover_page_default
     await db.commit()
     await db.refresh(settings)
     return AppSettingsOut(
@@ -103,6 +128,10 @@ async def update_settings(
         logo_mime_type=settings.logo_mime_type,
         report_footer=settings.report_footer,
         registration_enabled=settings.registration_enabled,
+        report_title_prefix=settings.report_title_prefix,
+        cover_page_text=settings.cover_page_text,
+        report_theme=settings.report_theme,
+        include_cover_page_default=settings.include_cover_page_default,
     )
 
 
@@ -140,6 +169,10 @@ async def upload_logo(
         logo_mime_type=settings.logo_mime_type,
         report_footer=settings.report_footer,
         registration_enabled=settings.registration_enabled,
+        report_title_prefix=settings.report_title_prefix,
+        cover_page_text=settings.cover_page_text,
+        report_theme=settings.report_theme,
+        include_cover_page_default=settings.include_cover_page_default,
     )
 
 
@@ -161,6 +194,10 @@ async def delete_logo(db: DBSession, current: CurrentUser) -> AppSettingsOut:
         logo_mime_type=None,
         report_footer=settings.report_footer,
         registration_enabled=settings.registration_enabled,
+        report_title_prefix=settings.report_title_prefix,
+        cover_page_text=settings.cover_page_text,
+        report_theme=settings.report_theme,
+        include_cover_page_default=settings.include_cover_page_default,
     )
 
 
@@ -175,12 +212,15 @@ async def get_logo(db: DBSession) -> Response:
 
 @router.get("/public-settings")
 async def get_public_settings(db: DBSession) -> dict:
-    """Public settings (no auth) — used by login/register page to show/hide registration."""
+    """Public settings (no auth) — used by login/register page and export dialogs."""
     settings = await _get_or_create_settings(db)
     return {
         "registration_enabled": settings.registration_enabled,
         "lab_name": settings.lab_name,
         "lab_subtitle": settings.lab_subtitle,
+        "report_theme": settings.report_theme,
+        "report_title_prefix": settings.report_title_prefix,
+        "include_cover_page_default": settings.include_cover_page_default,
     }
 
 
@@ -320,11 +360,13 @@ async def delete_audit_logs(db: DBSession, current: CurrentUser) -> dict:
 async def get_admin_stats(db: DBSession, current: CurrentUser) -> dict:
     """Get admin dashboard stats. Admin only."""
     await _require_admin(current)
-    from sqlalchemy import select as sa_select, func as sa_func
+    from sqlalchemy import func as sa_func
+    from sqlalchemy import select as sa_select
+
+    from app.models.audit_log import AuditLog
     from app.models.compound import Compound
     from app.models.method import Method
     from app.models.run import Run
-    from app.models.audit_log import AuditLog
 
     total_users = (await db.execute(sa_select(sa_func.count(User.id)))).scalar() or 0
     active_users = (await db.execute(sa_select(sa_func.count(User.id)).where(User.is_active == True))).scalar() or 0

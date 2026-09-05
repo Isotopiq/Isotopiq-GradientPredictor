@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Legend } from 'recharts';
-import { Columns, Calculator, Search, X, Plus } from 'lucide-react';
+import { Columns, Calculator, Search, X, Plus, Download } from 'lucide-react';
 import { columnsApi } from '@/api/columns';
+import { exportApi } from '@/api/export';
+import { ExportDialog } from '@/components/ExportDialog';
 import { toast } from 'sonner';
 import type { TanakaParameters, ColumnComparisonResult, ColumnSpec } from '@/types';
 
@@ -36,6 +38,36 @@ export function ColumnComparisonPage() {
   ]);
   const [results, setResults] = useState<ColumnComparisonResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [pdfExportOpen, setPdfExportOpen] = useState(false);
+
+  const handlePdfExport = async (sections: Record<string, boolean>) => {
+    const cols = selected
+      .filter((s) => s.params)
+      .map((s, i) => {
+        const col = dbColumns.find((c) => c.id === s.columnId);
+        const p = s.params!;
+        return {
+          label: col?.name || `Column ${String.fromCharCode(65 + i)}`,
+          tanaka: {
+            k_pb: p.k_pb || 0,
+            k_sr: p.alpha_ch2 || 0,
+            k_tfa: p.alpha_t_o || 0,
+            k_ch2: p.alpha_c_p || 0,
+            k_amide: p.alpha_b_a_76 || 0,
+          },
+        };
+      });
+    if (cols.length === 0) {
+      toast.error('Select at least one column with Tanaka parameters');
+      return;
+    }
+    try {
+      await exportApi.columnComparisonPdf(cols, sections);
+      toast.success('PDF exported');
+    } catch {
+      toast.error('PDF export failed');
+    }
+  };
 
   useEffect(() => {
     columnsApi.getTanakaReference().then(res => {
@@ -307,10 +339,19 @@ export function ColumnComparisonPage() {
         </button>
       )}
 
-      <button onClick={handleCompare} disabled={loading || activeColumns.length < 2} className="btn-primary flex items-center gap-2 text-sm">
-        <Calculator className="h-4 w-4" />
-        {loading ? 'Comparing...' : `Compare ${activeColumns.length} Columns`}
-      </button>
+      <div className="flex items-center gap-2">
+        <button onClick={handleCompare} disabled={loading || activeColumns.length < 2} className="btn-primary flex items-center gap-2 text-sm">
+          <Calculator className="h-4 w-4" />
+          {loading ? 'Comparing...' : `Compare ${activeColumns.length} Columns`}
+        </button>
+        <button
+          onClick={() => setPdfExportOpen(true)}
+          disabled={activeColumns.filter((s) => s.params).length === 0}
+          className="btn-outline flex items-center gap-2 text-sm"
+        >
+          <Download className="h-4 w-4" /> Export PDF
+        </button>
+      </div>
 
       {/* Radar Chart */}
       {activeColumns.length >= 2 && (
@@ -407,6 +448,21 @@ export function ColumnComparisonPage() {
           </div>
         </div>
       )}
+
+      <ExportDialog
+        open={pdfExportOpen}
+        onClose={() => setPdfExportOpen(false)}
+        title="Export Column Comparison PDF"
+        sections={[
+          { key: 'tanaka_table', label: 'Tanaka Parameter Table', default: true },
+          { key: 'radar_chart', label: 'Radar Chart', default: true },
+          { key: 'similarity_matrix', label: 'Similarity / Orthogonality Matrix', default: true },
+          { key: 'parameter_diffs', label: 'Parameter Differences', default: true },
+          { key: 'cover_page', label: 'Cover Page', default: false },
+          { key: 'disclaimer', label: 'Disclaimer', default: true },
+        ]}
+        onExport={handlePdfExport}
+      />
     </div>
   );
 }

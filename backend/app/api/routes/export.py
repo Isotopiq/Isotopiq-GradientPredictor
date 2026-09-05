@@ -1,21 +1,34 @@
-"""Export routes: PDF, CSV, and instrument-format method export."""
+"""Export routes: PDF, CSV, and instrument-format method export.
+
+All PDF exports are section-driven — the user selects which sections to include
+via a sections dict in the request body or query params.
+"""
 from __future__ import annotations
 
-import uuid
-
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import StreamingResponse
 import io
+import uuid
+from typing import Any
 
-from app.deps import CurrentUser, DBSession
+from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+
 from app.core.export.csv import export_method_csv
-from app.core.export.pdf import export_method_pdf
 from app.core.export.instrument import (
     export_agilent_m,
     export_thermo_xml,
     export_waters_mth,
 )
-from app.services import method_service, compound_service
+from app.core.export.pdf import (
+    BatchAnalysisSections,
+    ColumnComparisonSections,
+    PDFSectionOptions,
+    export_batch_analysis_pdf,
+    export_column_comparison_pdf,
+    export_method_pdf,
+)
+from app.deps import CurrentUser, DBSession
+from app.services import compound_service, method_service
 
 router = APIRouter(prefix="/export", tags=["export"])
 
@@ -43,6 +56,50 @@ def _compound_to_dict(compound) -> dict | None:
     }
 
 
+async def _load_settings_dict(db) -> dict[str, Any]:
+    """Load admin settings for PDF branding."""
+    from sqlalchemy import select as sa_select
+
+    from app.models.app_settings import AppSettings
+    result = await db.execute(sa_select(AppSettings).limit(1))
+    s = result.scalar_one_or_none()
+    if s is None:
+        return {}
+    return {
+        "lab_name": s.lab_name,
+        "lab_subtitle": s.lab_subtitle,
+        "report_footer": s.report_footer,
+        "logo_bytes": s.logo_bytes,
+        "report_title_prefix": s.report_title_prefix,
+        "cover_page_text": s.cover_page_text,
+        "report_theme": s.report_theme,
+        "include_cover_page_default": s.include_cover_page_default,
+    }
+
+
+def _parse_sections_query(sections_str: str | None) -> PDFSectionOptions:
+    """Parse a comma-separated sections query param into PDFSectionOptions."""
+    if not sections_str:
+        return PDFSectionOptions()
+    requested = set(s.strip() for s in sections_str.split(","))
+    return PDFSectionOptions(
+        method_parameters="method_parameters" in requested,
+        gradient_program="gradient_program" in requested,
+        compound_info="compound_info" in requested,
+        chromatogram="chromatogram" in requested,
+        resolution_matrix="resolution_matrix" in requested,
+        robustness="robustness" in requested,
+        optimization="optimization" in requested,
+        method_transfer="method_transfer" in requested,
+        cover_page="cover_page" in requested,
+        disclaimer="disclaimer" in requested,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Method export (existing, updated for sections)
+# ---------------------------------------------------------------------------
+
 @router.get("/method/{method_id}")
 async def export_method(
     method_id: uuid.UUID,
@@ -50,7 +107,7 @@ async def export_method(
     current: CurrentUser,
     format: str = Query("pdf", pattern="^(pdf|csv|agilent|waters|thermo)$"),
     compound_id: uuid.UUID | None = Query(None),
-    include_chromatogram: bool = Query(False),
+    sections: str | None = Query(None, description="Comma-separated section names for PDF"),
 ):
     method = await method_service.get_method(db, method_id)
     if method is None:
@@ -73,22 +130,11 @@ async def export_method(
             headers={"Content-Disposition": f"attachment; filename=method_{method_id}.csv"},
         )
     elif format == "pdf":
-        # Load app settings for branding
-        from sqlalchemy import select as sa_select
-        from app.models.app_settings import AppSettings
-        settings_result = await db.execute(sa_select(AppSettings).limit(1))
-        app_settings = settings_result.scalar_one_or_none()
-        settings_dict = None
-        if app_settings:
-            settings_dict = {
-                "lab_name": app_settings.lab_name,
-                "lab_subtitle": app_settings.lab_subtitle,
-                "report_footer": app_settings.report_footer,
-                "logo_bytes": app_settings.logo_bytes,
-            }
+        settings_dict = await _load_settings_dict(db)
+        section_opts = _parse_sections_query(sections)
         pdf_bytes = export_method_pdf(
             method, compound, None, settings_dict,
-            include_chromatogram=include_chromatogram,
+            sections=section_opts,
         )
         return StreamingResponse(
             io.BytesIO(pdf_bytes),
@@ -116,3 +162,169 @@ async def export_method(
             media_type="application/xml",
             headers={"Content-Disposition": f"attachment; filename=method_{method_id}.xml"},
         )
+
+
+# ---------------------------------------------------------------------------
+# Predictor export (unsaved method)
+# ---------------------------------------------------------------------------
+
+class PredictorExportRequest(BaseModel):
+    name: str | None = None
+    column_type: str = "C18"
+    ph: float | None = 2.7
+    flow_rate_ml_min: float | None = 0.4
+    temperature_c: float | None = 30.0
+    mobile_phase_a: str | None = None
+    mobile_phase_b: str | None = None
+    additive: str | None = None
+    gradient_table: list[dict[str, Any]] = []
+    compounds_smiles: list[str] = []
+    compound_names: list[str] | None = None
+    dwell_volume_ml: float | None = None
+    dead_volume_ml: float | None = None
+    sections: dict[str, bool] | None = None
+
+
+class _MockMethod:
+    """Lightweight stand-in for Method ORM object (not persisted)."""
+    def __init__(self, data: PredictorExportRequest):
+        self.name = data.name
+        self.column_type = data.column_type
+        self.ph = data.ph
+        self.flow_rate_ml_min = data.flow_rate_ml_min
+        self.temperature_c = data.temperature_c
+        self.mobile_phase_a = data.mobile_phase_a
+        self.mobile_phase_b = data.mobile_phase_b
+        self.additive = data.additive
+        self.gradient_table = data.gradient_table
+        self.compounds_smiles = data.compounds_smiles
+        self.dwell_volume_ml = data.dwell_volume_ml
+        self.dead_volume_ml = data.dead_volume_ml
+        self.column_dims = None
+        self.owner_id = None
+
+
+@router.post("/predictor")
+async def export_predictor(
+    data: PredictorExportRequest,
+    db: DBSession,
+    current: CurrentUser,
+):
+    """Export a PDF from the current predictor state (no save required)."""
+    settings_dict = await _load_settings_dict(db)
+    method = _MockMethod(data)
+    section_opts = PDFSectionOptions.from_dict(data.sections)
+    pdf_bytes = export_method_pdf(
+        method, None, None, settings_dict,
+        sections=section_opts,
+        compound_names=data.compound_names,
+    )
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=predictor_report.pdf"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Shared method export (public, no auth)
+# ---------------------------------------------------------------------------
+
+@router.get("/shared/{token}")
+async def export_shared_method(
+    token: str,
+    db: DBSession,
+    sections: str | None = Query(None),
+):
+    """Export a shared method as PDF. No auth required."""
+    from sqlalchemy import select as sa_select
+
+    from app.models.method import Method
+
+    result = await db.execute(
+        sa_select(Method).where(
+            Method.share_token == token,
+            Method.is_shared.is_(True),
+        )
+    )
+    method = result.scalar_one_or_none()
+    if method is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Shared method not found or no longer available")
+
+    settings_dict = await _load_settings_dict(db)
+    section_opts = _parse_sections_query(sections)
+    # Shared reports: no robustness/optimization (require heavy computation)
+    section_opts.robustness = False
+    section_opts.optimization = False
+    section_opts.method_transfer = False
+
+    pdf_bytes = export_method_pdf(method, None, None, settings_dict, sections=section_opts)
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=shared_method_{token}.pdf"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Column comparison export
+# ---------------------------------------------------------------------------
+
+class ColumnComparisonExportRequest(BaseModel):
+    columns: list[dict[str, Any]] = []
+    sections: dict[str, bool] | None = None
+
+
+@router.post("/column-comparison")
+async def export_column_comparison(
+    data: ColumnComparisonExportRequest,
+    db: DBSession,
+    current: CurrentUser,
+):
+    """Export a column comparison PDF report."""
+    if not data.columns:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No columns provided")
+    if len(data.columns) > 4:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Maximum 4 columns allowed")
+
+    settings_dict = await _load_settings_dict(db)
+    section_opts = ColumnComparisonSections.from_dict(data.sections)
+    pdf_bytes = export_column_comparison_pdf(data.columns, settings_dict, sections=section_opts)
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=column_comparison.pdf"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Batch analysis export
+# ---------------------------------------------------------------------------
+
+class BatchAnalysisExportRequest(BaseModel):
+    method_params: dict[str, Any] = {}
+    compounds: list[dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
+    sections: dict[str, bool] | None = None
+
+
+@router.post("/batch-analysis")
+async def export_batch_analysis(
+    data: BatchAnalysisExportRequest,
+    db: DBSession,
+    current: CurrentUser,
+):
+    """Export a batch analysis PDF report."""
+    settings_dict = await _load_settings_dict(db)
+    section_opts = BatchAnalysisSections.from_dict(data.sections)
+    batch_data = {
+        "method_params": data.method_params,
+        "compounds": data.compounds,
+        "results": data.results,
+    }
+    pdf_bytes = export_batch_analysis_pdf(batch_data, settings_dict, sections=section_opts)
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=batch_analysis.pdf"},
+    )

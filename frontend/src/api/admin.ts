@@ -10,6 +10,10 @@ export interface AppSettings {
   logo_mime_type: string | null;
   report_footer: string;
   registration_enabled: boolean;
+  report_title_prefix: string | null;
+  cover_page_text: string | null;
+  report_theme: string;
+  include_cover_page_default: boolean;
 }
 
 export interface AdminStats {
