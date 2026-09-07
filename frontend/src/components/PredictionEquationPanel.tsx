@@ -103,9 +103,17 @@ export function PredictionEquationPanel({ compoundsSmiles, compoundNames, compou
   };
 
   const handleBuild = async () => {
-    const valid = compounds.filter(c => c.smiles.trim() && c.rt_min > 0);
+    const withSmiles = compounds.filter(c => c.smiles.trim());
+    if (withSmiles.length < 5) {
+      toast.error(`Need at least 5 compounds with SMILES, got ${withSmiles.length}`);
+      return;
+    }
+    const valid = withSmiles.filter(c => c.rt_min > 0);
     if (valid.length < 5) {
-      toast.error(`Need at least 5 compounds with SMILES and RT, got ${valid.length}`);
+      const missing = withSmiles.length - valid.length;
+      toast.error(
+        `${missing} compound(s) have RT = 0 — enter retention times (min) for all compounds before building the equation.`
+      );
       return;
     }
     setBuilding(true);

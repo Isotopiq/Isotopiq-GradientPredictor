@@ -587,15 +587,19 @@ def _render_chromatogram(
         spine.set_color(mpl_theme["border"])
         spine.set_linewidth(0.5)
 
-    # Legend below the plot for many peaks, upper right for few
-    if n_peaks <= 6:
-        ax.legend(loc="upper right", fontsize=7, framealpha=0.9, ncol=1,
-                  bbox_to_anchor=(1.0, 0.95))
-    else:
-        ax.legend(loc="upper center", fontsize=6, framealpha=0.9,
-                  ncol=min(n_peaks, 4), bbox_to_anchor=(0.5, 1.02))
+    # Legend below the plot to avoid overlapping with peak labels
+    # Peak labels occupy y=1.09–1.35, so legend must be outside the plot area
+    ax.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.12),
+        fontsize=6.5,
+        framealpha=0.9,
+        ncol=min(n_peaks, 5),
+    )
 
+    # Reserve space below for the legend
     plt.tight_layout()
+    plt.subplots_adjust(bottom=0.22)
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=150, bbox_inches="tight", facecolor="white")
     plt.close(fig)
@@ -865,7 +869,7 @@ def _render_robustness_section(
             f"{p['min_resolution']:.3f}",
             change_str,
         ])
-    pert_tbl = _data_table(pert_data, [40 * mm, 30 * mm, 40 * mm, 40 * mm], styles, theme)
+    pert_tbl = _data_table(pert_data, [45 * mm, 35 * mm, 45 * mm, 45 * mm], styles, theme)
     story.append(pert_tbl)
     story.append(Spacer(1, 6))
 
@@ -948,7 +952,7 @@ def _render_optimization_section(
             f"{p['width_s']:.1f}",
             f"{p['tailing']:.2f}",
         ])
-    peak_tbl = _data_table(peak_data, [10 * mm, 60 * mm, 30 * mm, 30 * mm, 30 * mm], styles, theme)
+    peak_tbl = _data_table(peak_data, [12 * mm, 68 * mm, 30 * mm, 30 * mm, 30 * mm], styles, theme)
     story.append(peak_tbl)
 
     return story
@@ -1249,7 +1253,7 @@ def export_method_pdf(
                 t_min = p.get("time_s", 0) / 60.0
                 pct_b = p.get("percent_b", 0)
                 grad_data.append([f"{t_min:.2f}", f"{pct_b:.1f}%", f"{100 - pct_b:.1f}%"])
-            grad_tbl = _data_table(grad_data, [40 * mm, 40 * mm, 40 * mm], styles, theme)
+            grad_tbl = _data_table(grad_data, [57 * mm, 57 * mm, 56 * mm], styles, theme)
             story.append(grad_tbl)
         else:
             story.append(Paragraph("No gradient program defined.", styles["body_muted"]))
@@ -1296,7 +1300,7 @@ def export_method_pdf(
 
         if peaks:
             chroma_png = _render_chromatogram(peaks, total_time, mpl_theme)
-            img = Image(io.BytesIO(chroma_png), width=170 * mm, height=72 * mm)
+            img = Image(io.BytesIO(chroma_png), width=170 * mm, height=85 * mm)
             story.append(img)
             story.append(Spacer(1, 8))
 
@@ -1306,7 +1310,7 @@ def export_method_pdf(
                     str(i + 1), p["label"],
                     f"{p['rt_s']/60:.2f}", f"{p['width_s']:.1f}", f"{p['tailing']:.2f}",
                 ])
-            peak_tbl = _data_table(peak_data, [10 * mm, 60 * mm, 30 * mm, 30 * mm, 30 * mm], styles, theme)
+            peak_tbl = _data_table(peak_data, [12 * mm, 68 * mm, 30 * mm, 30 * mm, 30 * mm], styles, theme)
             story.append(peak_tbl)
         else:
             story.append(Paragraph(
@@ -1793,7 +1797,7 @@ def export_batch_analysis_pdf(
         if peaks:
             total_time = max(max_rt * 1.15, 1200)
             chroma_png = _render_chromatogram(peaks, total_time, mpl_theme)
-            img = Image(io.BytesIO(chroma_png), width=170 * mm, height=72 * mm)
+            img = Image(io.BytesIO(chroma_png), width=170 * mm, height=85 * mm)
             story.append(img)
         else:
             story.append(Paragraph("No chromatogram data available.", styles["body_muted"]))
@@ -2032,7 +2036,7 @@ def export_preview_pdf(settings: dict | None = None) -> bytes:
         ["3", "Ibuprofen", "5.78", "12.7", "1.78"],
         ["4", "LongNameCompound", "12.06", "26.4", "2.41"],
     ]
-    story.append(_data_table(peak_data, [10 * mm, 60 * mm, 30 * mm, 30 * mm, 30 * mm], styles, theme))
+    story.append(_data_table(peak_data, [12 * mm, 68 * mm, 30 * mm, 30 * mm, 30 * mm], styles, theme))
     story.append(Spacer(1, 8))
 
     # --- Resolution Matrix ---
@@ -2065,7 +2069,7 @@ def export_preview_pdf(settings: dict | None = None) -> bytes:
         ["Temp −5°C", "+8.8", "+0.56", "Medium"],
         ["pH +0.2", "−12.3", "−1.12", "High"],
     ]
-    story.append(_data_table(pert_data, [40 * mm, 30 * mm, 40 * mm, 40 * mm], styles, theme))
+    story.append(_data_table(pert_data, [45 * mm, 35 * mm, 45 * mm, 45 * mm], styles, theme))
     story.append(Spacer(1, 8))
 
     # --- Method Transfer ---

@@ -1629,8 +1629,14 @@ export function PredictorPage() {
                 compoundsSmiles={compounds.map(c => c.smiles).filter(s => s && s.trim())}
                 compoundNames={compounds.map(c => c.name).filter(Boolean) as string[]}
                 compoundRts={compounds.map((c, i) => {
+                  // Try multi-compound result first
                   const pc = multiResult?.per_compound?.find((p) => p.index === i);
-                  return pc?.predicted_rt_s != null ? pc.predicted_rt_s / 60 : null;
+                  if (pc?.predicted_rt_s != null) return pc.predicted_rt_s / 60;
+                  // Fall back to single-compound simulation for the active compound
+                  if (simResult?.predicted_rt_s != null && i === 0 && compounds.length === 1) {
+                    return simResult.predicted_rt_s / 60;
+                  }
+                  return null;
                 })}
               />
 
