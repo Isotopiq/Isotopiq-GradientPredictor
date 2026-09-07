@@ -297,6 +297,13 @@ export interface GradientSimulateResult {
   extrapolating?: boolean;
   rt_lower_s?: number;
   rt_upper_s?: number;
+  mechanism?: string;
+  mechanism_label?: string;
+  model_label?: string;
+  model_equation?: string;
+  model_reference?: string;
+  model_rationale?: string;
+  model_requires?: string;
 }
 
 // Retention model registry types
@@ -334,6 +341,30 @@ export interface AutoSelectResult {
     requires: string;
   };
   applicable_models: string[];
+}
+
+export interface ModelComparisonEntry {
+  model_key: string;
+  model_label: string;
+  equation: string;
+  predicted_rt_s: number;
+  confidence: number;
+  is_selected: boolean;
+  rationale: string;
+}
+
+export interface ModelComparisonResult {
+  mechanism: string;
+  mechanism_info: { key: string; label: string };
+  selected_model: string;
+  selected_model_info: {
+    key: string;
+    label: string;
+    equation: string;
+    requires: string;
+    reference?: string;
+  };
+  comparison: ModelComparisonEntry[];
 }
 
 export interface ChromatogramRequest {
@@ -619,6 +650,12 @@ export interface MultiCompoundSuggestion {
   };
   resolution_matrix: ResolutionPair[];
   co_elution_count: number;
+  retention_model?: string;
+  mechanism?: string;
+  model_label?: string;
+  model_equation?: string;
+  model_reference?: string;
+  model_rationale?: string;
 }
 
 // F7: Suitability Criteria

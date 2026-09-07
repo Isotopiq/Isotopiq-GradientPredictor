@@ -152,6 +152,39 @@ async def auto_select_retention_model(
     }
 
 
+@router.post("/compare-models")
+async def compare_models(data: GradientSimulateRequest) -> dict:
+    """Run all applicable retention models and return a comparison of predicted RTs.
+
+    Uses the same inputs as /gradient/simulate but runs every applicable model
+    for the inferred (or overridden) mechanism, returning predicted RTs and
+    confidence for each.
+    """
+    from app.core.lss.retention_models import compare_models as _compare
+
+    has_calibration = bool(data.calibration_runs and len(data.calibration_runs) >= 2)
+
+    return _compare(
+        column_type=data.column_type,
+        column_id=data.column_id,
+        logp=data.logp,
+        mw=data.mw,
+        tpsa=data.tpsa,
+        hbd=data.hbd,
+        hba=data.hba,
+        gradient_table=data.gradient_table,
+        flow_rate_ml_min=data.flow_rate_ml_min,
+        column_void_volume_ml=data.column_void_volume_ml,
+        smiles=data.smiles,
+        ph=data.ph,
+        has_calibration=has_calibration,
+        has_ml_model=False,
+        dwell_volume_ml=data.dwell_volume_ml,
+        dead_volume_ml=data.dead_volume_ml,
+        mechanism=data.retention_mechanism,
+    )
+
+
 # --- Action routes (no path params, safe to be first) ---
 
 
@@ -185,6 +218,12 @@ async def suggest_multi_method(data: MultiCompoundSuggestionRequest) -> MultiCom
         gradient_time_min=data.gradient_time_min,
         flow_rate_ml_min=data.flow_rate_ml_min,
         column_type=data.column_type,
+        retention_model=data.retention_model,
+        retention_mechanism=data.retention_mechanism,
+        column_id=data.column_id,
+        ph=data.ph,
+        dwell_volume_ml=data.dwell_volume_ml,
+        dead_volume_ml=data.dead_volume_ml,
     )
     return MultiCompoundSuggestionOut.model_validate(result)
 

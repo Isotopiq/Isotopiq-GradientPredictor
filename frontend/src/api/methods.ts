@@ -31,6 +31,7 @@ import type {
   PeakTrackingResult,
   RetentionModelsRegistry,
   AutoSelectResult,
+  ModelComparisonResult,
 } from '@/types';
 
 export const methodsApi = {
@@ -66,11 +67,25 @@ export const methodsApi = {
     gradient_time_min?: number;
     flow_rate_ml_min?: number;
     column_type?: string;
+    retention_model?: string;
+    retention_mechanism?: string;
+    column_id?: string;
+    ph?: number;
+    dwell_volume_ml?: number;
+    dead_volume_ml?: number;
   }) => {
     const { data: result } = await apiClient.post<MultiCompoundSuggestion>('/methods/suggest-multi', {
       smiles_list: smilesList,
       ...params,
     });
+    return result;
+  },
+
+  compareModels: async (data: GradientSimulateRequest) => {
+    const { data: result } = await apiClient.post<ModelComparisonResult>(
+      '/methods/compare-models',
+      data,
+    );
     return result;
   },
 

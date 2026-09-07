@@ -19,6 +19,8 @@ import { DwellVolumeGuide } from '@/components/DwellVolumeGuide';
 import { PredictionEquationPanel } from '@/components/PredictionEquationPanel';
 import { ModelSelectionPanel } from '@/components/ModelSelectionPanel';
 import { RetentionModelSelector } from '@/components/RetentionModelSelector';
+import { ModelInfoCard } from '@/components/ModelInfoCard';
+import { ModelComparisonTable } from '@/components/ModelComparisonTable';
 import { PhSelectorPanel } from '@/components/PhSelectorPanel';
 import { ResolutionMap1D } from '@/components/ResolutionMap1D';
 import { ResolutionMap2D } from '@/components/ResolutionMap2D';
@@ -39,6 +41,7 @@ import type {
   ChromatogramResult,
   MultiCompoundSuggestion,
   UserTemplateCreate,
+  ModelComparisonResult,
 } from '@/types';
 
 interface CompoundEntry {
@@ -112,6 +115,21 @@ export function PredictorPage() {
   // Retention mechanism/model selection (null = auto)
   const [retentionMechanism, setRetentionMechanism] = useState<string | null>(null);
   const [retentionModel, setRetentionModel] = useState<string | null>(null);
+  // Active model info from the last simulation (for ModelInfoCard)
+  const [activeModelInfo, setActiveModelInfo] = useState<{
+    mechanism?: string;
+    mechanismLabel?: string;
+    modelLabel?: string;
+    modelEquation?: string;
+    modelReference?: string;
+    modelRationale?: string;
+    modelRequires?: string;
+    confidence?: number;
+    extrapolating?: boolean;
+  } | null>(null);
+  // Model comparison result (for ModelComparisonTable)
+  const [modelComparison, setModelComparison] = useState<ModelComparisonResult | null>(null);
+  const [modelComparisonLoading, setModelComparisonLoading] = useState(false);
   const [robustnessResult, setRobustnessResult] = useState<{
     perturbations: Array<{ parameter: string; delta: string; rts: number[]; min_resolution: number; resolution_change: number }>;
     sensitivity_score: number;
@@ -412,8 +430,26 @@ export function PredictorPage() {
         column_type: columnChoice || undefined,
         gradient_time_min: gradientTime,
         flow_rate_ml_min: flowRate,
+        retention_model: retentionModel || undefined,
+        retention_mechanism: retentionMechanism || undefined,
+        column_id: commercialColumnId || undefined,
+        ph,
+        dwell_volume_ml: dwellVolume || undefined,
+        dead_volume_ml: deadVolume || undefined,
       });
       setMultiResult(result);
+
+      // Capture model info for ModelInfoCard
+      setActiveModelInfo({
+        mechanism: result.mechanism,
+        mechanismLabel: undefined, // suggest-multi doesn't return mechanism_label
+        modelLabel: result.model_label,
+        modelEquation: result.model_equation,
+        modelReference: result.model_reference,
+        modelRationale: result.model_rationale,
+        confidence: undefined,
+        extrapolating: undefined,
+      });
 
       // Update the gradient table and primary suggestion from the merged result
       if (result.gradient?.gradient_table?.length > 0) {
@@ -636,6 +672,20 @@ export function PredictorPage() {
                 method: sim.method,
               });
             }
+            // Capture model info for ModelInfoCard
+            if (!cancelled) {
+              setActiveModelInfo({
+                mechanism: sim.mechanism,
+                mechanismLabel: sim.mechanism_label,
+                modelLabel: sim.model_label,
+                modelEquation: sim.model_equation,
+                modelReference: sim.model_reference,
+                modelRationale: sim.model_rationale,
+                modelRequires: sim.model_requires,
+                confidence: sim.confidence,
+                extrapolating: sim.extrapolating ?? undefined,
+              });
+            }
             peaks = [{
               rt_s: sim.predicted_rt_s * tempRtFactor,
               width_s: undefined,
@@ -683,6 +733,46 @@ export function PredictorPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [multiResult, gradientTable, simResult, flowRate, ph, temperature, columnChoice, autoAdjustGradient, commercialColumnId]);
+
+  // Fetch model comparison when key inputs change
+  useEffect(() => {
+    if (gradientTable.length < 2) {
+      setModelComparison(null);
+      return;
+    }
+    let cancelled = false;
+    setModelComparisonLoading(true);
+    methodsApi
+      .compareModels({
+        gradient_table: gradientTable,
+        flow_rate_ml_min: flowRate,
+        logp: suggestion?.descriptors.logp ?? activeCompound?.logp ?? 2.0,
+        mw: suggestion?.descriptors.mw ?? activeCompound?.mw ?? 200,
+        tpsa: suggestion?.descriptors.tpsa ?? activeCompound?.tpsa ?? 0,
+        hbd: suggestion?.descriptors.hbd ?? 0,
+        hba: suggestion?.descriptors.hba ?? 0,
+        column_type: columnChoice || suggestion?.column.column_type || 'C18',
+        column_id: commercialColumnId || undefined,
+        smiles: activeSmiles || undefined,
+        ph,
+        dwell_volume_ml: dwellVolume || undefined,
+        dead_volume_ml: deadVolume || undefined,
+        retention_model: retentionModel || undefined,
+        retention_mechanism: retentionMechanism || undefined,
+      })
+      .then((result) => {
+        if (!cancelled) setModelComparison(result);
+      })
+      .catch(() => {
+        if (!cancelled) setModelComparison(null);
+      })
+      .finally(() => {
+        if (!cancelled) setModelComparisonLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [gradientTable, flowRate, columnChoice, commercialColumnId, ph, retentionModel, retentionMechanism]);
 
   const handlePdfExport = async (sections: Record<string, boolean>) => {
     if (gradientTable.length === 0 && !suggestion && !multiResult) {
@@ -1269,6 +1359,16 @@ export function PredictorPage() {
             <div className="space-y-4">
               <MethodSuggestionCard suggestion={suggestion} loading={suggesting} />
 
+              {/* Retention Model Info — shows which equation was used */}
+              <ModelInfoCard info={activeModelInfo} loading={suggesting} />
+
+              {/* Model Comparison — collapsible table of all applicable models */}
+              <ModelComparisonTable
+                comparison={modelComparison?.comparison ?? []}
+                loading={modelComparisonLoading}
+                onModelSelect={(key) => setRetentionModel(key)}
+              />
+
               {/* Charts: Gradient + Chromatogram side by side */}
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <GradientChart
@@ -1312,7 +1412,7 @@ export function PredictorPage() {
                       </span>
                     )}
                     <span className="badge badge-info text-xs">
-                      {predictionConfidence.method === 'pirm' ? 'PIRM' : predictionConfidence.method === 'lss_fit' ? 'LSS Fit' : 'Heuristic'}
+                      {activeModelInfo?.modelLabel || (predictionConfidence.method === 'pirm' ? 'PIRM' : predictionConfidence.method === 'lss_fit' ? 'LSS Fit' : 'Heuristic')}
                     </span>
                   </div>
                   {predictionConfidence.method === 'heuristic' && (

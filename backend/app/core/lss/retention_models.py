@@ -620,3 +620,292 @@ def heuristic_jandera_params(
     b_jan = s / 4.0
     n_jan = 1.5
     return JanderaParams(a_jan=a_jan, b_jan=b_jan, n_jan=n_jan, t0=t0)
+
+
+# ---------------------------------------------------------------------------
+# Model rationale messages
+# ---------------------------------------------------------------------------
+
+_MODEL_RATIONALE: dict[str, str] = {
+    "lss": "Default heuristic LSS model — no calibration data or commercial column selected.",
+    "quadratic": "Selected for wide %B range (>40%) where log k vs φ shows curvature.",
+    "jandera": "Selected for normal-phase or wide-range RP separations.",
+    "polarity": "Selected as universal model for wide %B range without calibration data.",
+    "pirm": "Selected because a commercial column with stationary-phase data is available.",
+    "ml_trained": "Selected because a trained ML model exists for this column type.",
+    "empirical": "Selected because ≥5 known compounds with retention times are available.",
+    "lss_fit": "Selected because ≥2 calibration runs are available for fitting.",
+    "iex_retention": "Ion-exchange mechanism — retention depends on ionic strength, not organic modifier.",
+    "sec_no_retention": "Size-exclusion mechanism — separation by molecular size, no retention factor model.",
+}
+
+
+def get_model_rationale(model_key: str) -> str:
+    """Get a human-readable rationale for why a model was selected."""
+    return _MODEL_RATIONALE.get(model_key, "Auto-selected based on available parameters.")
+
+
+# ---------------------------------------------------------------------------
+# Multi-model comparison
+# ---------------------------------------------------------------------------
+
+def compare_models(
+    column_type: str | None,
+    column_id: str | None,
+    logp: float,
+    mw: float,
+    tpsa: float,
+    hbd: int,
+    hba: int,
+    gradient_table: list[dict],
+    flow_rate_ml_min: float = 0.4,
+    column_void_volume_ml: float = 0.4,
+    smiles: str | None = None,
+    ph: float | None = None,
+    has_calibration: bool = False,
+    has_ml_model: bool = False,
+    dwell_volume_ml: float | None = None,
+    dead_volume_ml: float | None = None,
+    mechanism: str | None = None,
+) -> dict:
+    """Run all applicable models and return a comparison of predicted RTs.
+
+    Returns a dict with:
+        mechanism: resolved mechanism key
+        mechanism_info: {key, label}
+        selected_model: the auto-selected model key
+        selected_model_info: {key, label, equation, requires}
+        comparison: list of {model_key, model_label, equation, predicted_rt_s,
+                             confidence, is_selected, rationale}
+    """
+    from app.core.lss.gradient_sim import (
+        heuristic_lss_params,
+        predict_rt_from_gradient,
+    )
+
+    inferred = infer_mechanism_from_column(column_type)
+    effective_mechanism = mechanism or inferred
+    selected = auto_select_model(
+        column_type=column_type,
+        column_id=column_id,
+        has_calibration=has_calibration,
+        has_known_compounds=False,
+        has_ml_model=has_ml_model,
+        percent_b_range=abs(
+            (gradient_table[-1].get("percent_b", 95) - gradient_table[0].get("percent_b", 5))
+            if len(gradient_table) >= 2 else 90.0
+        ),
+        mechanism=mechanism,
+    )
+
+    # Compute effective logP (with pH adjustment if smiles provided)
+    effective_logp = logp
+    if smiles and ph is not None:
+        try:
+            from app.core.chem.logd import logd_at_ph
+            from app.core.chem.parser import parse_mol
+            mol = parse_mol(smiles).mol
+            effective_logp = logd_at_ph(mol, ph, logp)
+        except Exception:
+            pass
+
+    t0 = 60.0 * column_void_volume_ml / max(flow_rate_ml_min, 0.01)
+
+    # Get all applicable model keys for this mechanism
+    applicable_keys = get_models_for_mechanism(effective_mechanism)
+
+    # SEC and IEX: no solvent-strength comparison
+    if effective_mechanism == "size_exclusion":
+        return {
+            "mechanism": effective_mechanism,
+            "mechanism_info": {
+                "key": RETENTION_MECHANISMS[effective_mechanism].key,
+                "label": RETENTION_MECHANISMS[effective_mechanism].label,
+            },
+            "selected_model": selected,
+            "selected_model_info": {
+                "key": RETENTION_MODELS[selected].key,
+                "label": RETENTION_MODELS[selected].label,
+                "equation": RETENTION_MODELS[selected].equation,
+                "requires": RETENTION_MODELS[selected].requires,
+            },
+            "comparison": [{
+                "model_key": selected,
+                "model_label": RETENTION_MODELS[selected].label,
+                "equation": RETENTION_MODELS[selected].equation,
+                "predicted_rt_s": t0,
+                "confidence": 0.9,
+                "is_selected": True,
+                "rationale": get_model_rationale(selected),
+            }],
+        }
+
+    if effective_mechanism == "ion_exchange":
+        return {
+            "mechanism": effective_mechanism,
+            "mechanism_info": {
+                "key": RETENTION_MECHANISMS[effective_mechanism].key,
+                "label": RETENTION_MECHANISMS[effective_mechanism].label,
+            },
+            "selected_model": selected,
+            "selected_model_info": {
+                "key": RETENTION_MODELS[selected].key,
+                "label": RETENTION_MODELS[selected].label,
+                "equation": RETENTION_MODELS[selected].equation,
+                "requires": RETENTION_MODELS[selected].requires,
+            },
+            "comparison": [{
+                "model_key": selected,
+                "model_label": RETENTION_MODELS[selected].label,
+                "equation": RETENTION_MODELS[selected].equation,
+                "predicted_rt_s": t0,
+                "confidence": 0.5,
+                "is_selected": True,
+                "rationale": get_model_rationale(selected),
+            }],
+        }
+
+    comparison: list[dict] = []
+
+    for model_key in applicable_keys:
+        model = RETENTION_MODELS[model_key]
+        rt = None
+        confidence = 0.3
+
+        try:
+            if model_key == "pirm" and column_id:
+                from app.core.chem.columns_db import get_column
+                from app.core.ml.pirm_model import predict_retention as pirm_predict
+                col = get_column(column_id)
+                if col is not None and col.phase is not None:
+                    asph = 0.0
+                    rgyr = 0.0
+                    pmi_ratio = 0.0
+                    if smiles:
+                        try:
+                            from app.core.chem.descriptors import compute_descriptors
+                            from app.core.chem.parser import parse_mol
+                            mol = parse_mol(smiles).mol
+                            desc = compute_descriptors(mol)
+                            if desc.descriptors_3d:
+                                asph = desc.descriptors_3d.asphericity
+                                rgyr = desc.descriptors_3d.radius_of_gyration
+                                pmi_ratio = desc.descriptors_3d.pmi_ratio_13
+                        except Exception:
+                            pass
+                    result = pirm_predict(
+                        column=col,
+                        logp=effective_logp,
+                        mw=mw,
+                        tpsa=tpsa,
+                        gradient_table=gradient_table,
+                        flow_rate_ml_min=flow_rate_ml_min,
+                        asphericity=asph,
+                        radius_of_gyration=rgyr,
+                        pmi_ratio_13=pmi_ratio,
+                        dwell_volume_ml=dwell_volume_ml,
+                        dead_volume_ml=dead_volume_ml,
+                    )
+                    rt = result["predicted_rt_s"]
+                    confidence = result.get("confidence", 0.7)
+
+            elif model_key == "pirm" and not column_id:
+                # PIRM not available without column — skip
+                continue
+
+            elif model_key == "ml_trained" and not has_ml_model:
+                # ML not available — skip
+                continue
+
+            elif model_key == "lss_fit" and not has_calibration:
+                # LSS fit not available without calibration — skip
+                continue
+
+            elif model_key == "empirical":
+                # Empirical needs known compounds — skip in comparison
+                continue
+
+            elif model_key == "quadratic":
+                params = heuristic_quadratic_params(effective_logp, mw, t0)
+                rt = predict_rt_quadratic(
+                    params, gradient_table,
+                    flow_rate_ml_min=flow_rate_ml_min,
+                    dwell_volume_ml=dwell_volume_ml,
+                    dead_volume_ml=dead_volume_ml,
+                )
+                confidence = 0.35
+
+            elif model_key == "jandera":
+                params = heuristic_jandera_params(effective_logp, mw, t0)
+                rt = predict_rt_jandera(
+                    params, gradient_table,
+                    flow_rate_ml_min=flow_rate_ml_min,
+                    dwell_volume_ml=dwell_volume_ml,
+                    dead_volume_ml=dead_volume_ml,
+                )
+                confidence = 0.3
+
+            elif model_key == "polarity":
+                params = heuristic_polarity_params(effective_logp, t0)
+                rt = predict_rt_polarity(
+                    params, gradient_table,
+                    flow_rate_ml_min=flow_rate_ml_min,
+                    dwell_volume_ml=dwell_volume_ml,
+                    dead_volume_ml=dead_volume_ml,
+                )
+                confidence = 0.35
+
+            elif model_key in ("lss", "lss_fit"):
+                if model_key == "lss_fit" and has_calibration:
+                    # Would need calibration runs — skip in comparison
+                    continue
+                params = heuristic_lss_params(
+                    effective_logp,
+                    mw=mw,
+                    tpsa=tpsa,
+                    hbd=hbd,
+                    hba=hba,
+                    column_type=column_type or "C18",
+                )
+                rt = predict_rt_from_gradient(
+                    params, gradient_table,
+                    flow_rate_ml_min=flow_rate_ml_min,
+                    column_void_volume_ml=column_void_volume_ml,
+                    dwell_volume_ml=dwell_volume_ml,
+                    dead_volume_ml=dead_volume_ml,
+                )
+                confidence = 0.4 if model_key == "lss" else 0.6
+
+        except Exception:
+            rt = None
+
+        if rt is not None:
+            comparison.append({
+                "model_key": model_key,
+                "model_label": model.label,
+                "equation": model.equation,
+                "predicted_rt_s": rt,
+                "confidence": confidence,
+                "is_selected": model_key == selected,
+                "rationale": get_model_rationale(model_key),
+            })
+
+    # Sort by confidence descending
+    comparison.sort(key=lambda x: x["confidence"], reverse=True)
+
+    return {
+        "mechanism": effective_mechanism,
+        "mechanism_info": {
+            "key": RETENTION_MECHANISMS[effective_mechanism].key,
+            "label": RETENTION_MECHANISMS[effective_mechanism].label,
+        },
+        "selected_model": selected,
+        "selected_model_info": {
+            "key": RETENTION_MODELS[selected].key,
+            "label": RETENTION_MODELS[selected].label,
+            "equation": RETENTION_MODELS[selected].equation,
+            "requires": RETENTION_MODELS[selected].requires,
+            "reference": RETENTION_MODELS[selected].reference,
+        },
+        "comparison": comparison,
+    }

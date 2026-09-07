@@ -166,10 +166,14 @@ def simulate_gradient(data: GradientSimulateRequest) -> dict[str, Any]:
     single-pKa approximation).
     """
     from app.core.lss.retention_models import (
+        RETENTION_MECHANISMS,
+        RETENTION_MODELS,
         auto_select_model,
+        get_model_rationale,
         heuristic_jandera_params,
         heuristic_polarity_params,
         heuristic_quadratic_params,
+        infer_mechanism_from_column,
         predict_rt_jandera,
         predict_rt_polarity,
         predict_rt_quadratic,
@@ -206,6 +210,23 @@ def simulate_gradient(data: GradientSimulateRequest) -> dict[str, Any]:
         percent_b_range=percent_b_range,
         mechanism=data.retention_mechanism,
     )
+
+    # Build model info for the response
+    effective_mechanism = data.retention_mechanism or infer_mechanism_from_column(
+        data.column_type
+    )
+    mech_info = RETENTION_MECHANISMS.get(effective_mechanism)
+    model_info = RETENTION_MODELS.get(selected_model, RETENTION_MODELS["lss"])
+
+    model_meta = {
+        "mechanism": effective_mechanism,
+        "mechanism_label": mech_info.label if mech_info else effective_mechanism,
+        "model_label": model_info.label,
+        "model_equation": model_info.equation,
+        "model_reference": model_info.reference,
+        "model_rationale": get_model_rationale(selected_model),
+        "model_requires": model_info.requires,
+    }
 
     # Compute t0 for models that need it
     t0 = 60.0 * data.column_void_volume_ml / max(data.flow_rate_ml_min, 0.01)
@@ -255,6 +276,7 @@ def simulate_gradient(data: GradientSimulateRequest) -> dict[str, Any]:
                 "extrapolating": result["extrapolating"],
                 "rt_lower_s": result["rt_lower_s"],
                 "rt_upper_s": result["rt_upper_s"],
+                **model_meta,
             }
         # Fall through if column not found
 
@@ -275,6 +297,7 @@ def simulate_gradient(data: GradientSimulateRequest) -> dict[str, Any]:
             "retention_model": "quadratic",
             "confidence": 0.35,
             "extrapolating": False,
+            **model_meta,
         }
 
     # Jandera model (Eq 6.20)
@@ -294,6 +317,7 @@ def simulate_gradient(data: GradientSimulateRequest) -> dict[str, Any]:
             "retention_model": "jandera",
             "confidence": 0.3,
             "extrapolating": False,
+            **model_meta,
         }
 
     # Polarity model (Eq 6.31)
@@ -313,6 +337,7 @@ def simulate_gradient(data: GradientSimulateRequest) -> dict[str, Any]:
             "retention_model": "polarity",
             "confidence": 0.35,
             "extrapolating": False,
+            **model_meta,
         }
 
     # LSS fit from calibration runs
@@ -353,6 +378,7 @@ def simulate_gradient(data: GradientSimulateRequest) -> dict[str, Any]:
         "gradient_table": data.gradient_table,
         "method": method,
         "retention_model": "lss",
+        **model_meta,
     }
 
 
@@ -381,17 +407,28 @@ def suggest_multi(
     gradient_time_min: float = 25.0,
     flow_rate_ml_min: float = 0.4,
     column_type: str | None = None,
+    retention_model: str | None = None,
+    retention_mechanism: str | None = None,
+    column_id: str | None = None,
+    ph: float | None = None,
+    dwell_volume_ml: float | None = None,
+    dead_volume_ml: float | None = None,
 ) -> dict[str, Any]:
     """Suggest a method that resolves a mixture of compounds.
 
     Returns per-compound suggestions, a merged gradient, predicted RTs,
     and pairwise resolution matrix with co-elution flags.
+
+    When retention_model / retention_mechanism are provided, the selected
+    model is used for RT prediction instead of the default heuristic LSS.
     """
     from app.core.chem.parser import ChemParseError, parse_mol
     from app.core.lss.chromatogram import default_peak_width, resolution
-    from app.core.lss.gradient_sim import (
-        heuristic_lss_params,
-        predict_rt_from_gradient,
+    from app.core.lss.retention_models import (
+        RETENTION_MODELS,
+        auto_select_model,
+        get_model_rationale,
+        infer_mechanism_from_column,
     )
     from app.core.rules.engine import suggest_method
     from app.core.rules.gradient import heuristic_gradient
@@ -446,20 +483,77 @@ def suggest_multi(
     # Determine effective column type (override or from per-compound suggestion)
     effective_column = column_type or valid[0].get("column", {}).get("column_type", "C18")
 
-    # Predict RT for each compound on the merged gradient
+    # Determine the retention model to use
+    percent_b_range = abs(
+        merged_gradient["gradient_table"][-1].get("percent_b", 95)
+        - merged_gradient["gradient_table"][0].get("percent_b", 5)
+    ) if len(merged_gradient.get("gradient_table", [])) >= 2 else 90.0
+
+    selected_model = retention_model or auto_select_model(
+        column_type=effective_column,
+        column_id=column_id,
+        has_calibration=False,
+        has_known_compounds=False,
+        has_ml_model=False,
+        percent_b_range=percent_b_range,
+        mechanism=retention_mechanism,
+    )
+
+    effective_mechanism = retention_mechanism or infer_mechanism_from_column(
+        effective_column
+    )
+    model_info = RETENTION_MODELS.get(selected_model, RETENTION_MODELS["lss"])
+
+    model_meta = {
+        "retention_model": selected_model,
+        "mechanism": effective_mechanism,
+        "model_label": model_info.label,
+        "model_equation": model_info.equation,
+        "model_reference": model_info.reference,
+        "model_rationale": get_model_rationale(selected_model),
+    }
+
+    # Compute t0
+    col_void_vol = 0.4  # default
+    t0 = 60.0 * col_void_vol / max(flow_rate_ml_min, 0.01)
+
+    # Predict RT for each compound using the selected model
     rts: list[tuple[int, float, float]] = []  # (index, rt, width)
     for c in valid:
-        params = heuristic_lss_params(
-            c.get("logp", 2.0),
-            mw=c.get("mw", 200.0),
-            tpsa=c.get("tpsa", 0.0),
-            hbd=c.get("hbd", 0),
-            hba=c.get("hba", 0),
+        c_logp = c.get("logp", 2.0)
+        c_mw = c.get("mw", 200.0)
+        c_tpsa = c.get("tpsa", 0.0)
+        c_hbd = c.get("hbd", 0)
+        c_hba = c.get("hba", 0)
+        c_smiles = c.get("smiles")
+
+        # pH-adjusted logD if applicable
+        effective_logp = c_logp
+        if c_smiles and ph is not None:
+            try:
+                from app.core.chem.logd import logd_at_ph
+                mol = parse_mol(c_smiles).mol
+                effective_logp = logd_at_ph(mol, ph, c_logp)
+            except Exception:
+                pass
+
+        rt = _predict_rt_with_model(
+            model_key=selected_model,
+            logp=effective_logp,
+            mw=c_mw,
+            tpsa=c_tpsa,
+            hbd=c_hbd,
+            hba=c_hba,
             column_type=effective_column,
+            column_id=column_id,
+            smiles=c_smiles,
+            gradient_table=merged_gradient["gradient_table"],
+            flow_rate_ml_min=flow_rate_ml_min,
+            t0=t0,
+            dwell_volume_ml=dwell_volume_ml,
+            dead_volume_ml=dead_volume_ml,
         )
-        rt = predict_rt_from_gradient(
-            params, merged_gradient["gradient_table"], flow_rate_ml_min
-        )
+
         w = default_peak_width(rt)
         c["predicted_rt_s"] = rt
         c["peak_width_s"] = w
@@ -488,7 +582,113 @@ def suggest_multi(
         "gradient": merged_gradient,
         "resolution_matrix": resolution_matrix,
         "co_elution_count": sum(1 for r in resolution_matrix if r["co_elution_risk"]),
+        **model_meta,
     }
+
+
+def _predict_rt_with_model(
+    model_key: str,
+    logp: float,
+    mw: float,
+    tpsa: float,
+    hbd: int,
+    hba: int,
+    column_type: str,
+    column_id: str | None,
+    smiles: str | None,
+    gradient_table: list[dict],
+    flow_rate_ml_min: float,
+    t0: float,
+    dwell_volume_ml: float | None,
+    dead_volume_ml: float | None,
+) -> float:
+    """Predict RT using the specified model. Shared by suggest_multi."""
+    from app.core.lss.gradient_sim import (
+        heuristic_lss_params,
+        predict_rt_from_gradient,
+    )
+    from app.core.lss.retention_models import (
+        heuristic_jandera_params,
+        heuristic_polarity_params,
+        heuristic_quadratic_params,
+        predict_rt_jandera,
+        predict_rt_polarity,
+        predict_rt_quadratic,
+    )
+
+    if model_key == "pirm" and column_id:
+        from app.core.chem.columns_db import get_column
+        from app.core.ml.pirm_model import predict_retention as pirm_predict
+        col = get_column(column_id)
+        if col is not None and col.phase is not None:
+            asph = 0.0
+            rgyr = 0.0
+            pmi_ratio = 0.0
+            if smiles:
+                try:
+                    from app.core.chem.descriptors import compute_descriptors
+                    from app.core.chem.parser import parse_mol
+                    mol = parse_mol(smiles).mol
+                    desc = compute_descriptors(mol)
+                    if desc.descriptors_3d:
+                        asph = desc.descriptors_3d.asphericity
+                        rgyr = desc.descriptors_3d.radius_of_gyration
+                        pmi_ratio = desc.descriptors_3d.pmi_ratio_13
+                except Exception:
+                    pass
+            result = pirm_predict(
+                column=col,
+                logp=logp,
+                mw=mw,
+                tpsa=tpsa,
+                gradient_table=gradient_table,
+                flow_rate_ml_min=flow_rate_ml_min,
+                asphericity=asph,
+                radius_of_gyration=rgyr,
+                pmi_ratio_13=pmi_ratio,
+                dwell_volume_ml=dwell_volume_ml,
+                dead_volume_ml=dead_volume_ml,
+            )
+            return result["predicted_rt_s"]
+        # Fall through to LSS if column not found
+
+    if model_key == "quadratic":
+        params = heuristic_quadratic_params(logp, mw, t0)
+        return predict_rt_quadratic(
+            params, gradient_table,
+            flow_rate_ml_min=flow_rate_ml_min,
+            dwell_volume_ml=dwell_volume_ml,
+            dead_volume_ml=dead_volume_ml,
+        )
+
+    if model_key == "jandera":
+        params = heuristic_jandera_params(logp, mw, t0)
+        return predict_rt_jandera(
+            params, gradient_table,
+            flow_rate_ml_min=flow_rate_ml_min,
+            dwell_volume_ml=dwell_volume_ml,
+            dead_volume_ml=dead_volume_ml,
+        )
+
+    if model_key == "polarity":
+        params = heuristic_polarity_params(logp, t0)
+        return predict_rt_polarity(
+            params, gradient_table,
+            flow_rate_ml_min=flow_rate_ml_min,
+            dwell_volume_ml=dwell_volume_ml,
+            dead_volume_ml=dead_volume_ml,
+        )
+
+    # Default: heuristic LSS (also fallback for pirm without column)
+    params = heuristic_lss_params(
+        logp, mw=mw, tpsa=tpsa, hbd=hbd, hba=hba, column_type=column_type,
+    )
+    return predict_rt_from_gradient(
+        params, gradient_table,
+        flow_rate_ml_min=flow_rate_ml_min,
+        dwell_volume_ml=dwell_volume_ml,
+        dead_volume_ml=dead_volume_ml,
+    )
 
 
 def optimize_gradient_separation(

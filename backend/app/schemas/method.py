@@ -117,10 +117,18 @@ class GradientSimulateOut(BaseModel):
     predicted_rt_s: float
     gradient_table: list[dict[str, Any]]
     method: str  # "lss_fit" | "heuristic" | "pirm"
+    retention_model: str | None = None
     confidence: float | None = None
     extrapolating: bool | None = None
     rt_lower_s: float | None = None
     rt_upper_s: float | None = None
+    mechanism: str | None = None
+    mechanism_label: str | None = None
+    model_label: str | None = None
+    model_equation: str | None = None
+    model_reference: str | None = None
+    model_rationale: str | None = None
+    model_requires: str | None = None
 
 
 class ChromatogramRequest(BaseModel):
@@ -142,6 +150,12 @@ class MultiCompoundSuggestionRequest(BaseModel):
     gradient_time_min: float = 25.0
     flow_rate_ml_min: float = 0.4
     column_type: str | None = None  # override the heuristic column choice
+    retention_model: str | None = None  # override model selection
+    retention_mechanism: str | None = None  # override mechanism
+    column_id: str | None = None  # commercial column ID for PIRM
+    ph: float | None = None  # for logD adjustment
+    dwell_volume_ml: float | None = None
+    dead_volume_ml: float | None = None
 
 
 class MultiCompoundSuggestionOut(BaseModel):
@@ -149,6 +163,12 @@ class MultiCompoundSuggestionOut(BaseModel):
     gradient: dict
     resolution_matrix: list[dict[str, Any]]
     co_elution_count: int
+    retention_model: str | None = None
+    mechanism: str | None = None
+    model_label: str | None = None
+    model_equation: str | None = None
+    model_reference: str | None = None
+    model_rationale: str | None = None
 
 
 class SuitabilityCriteriaSchema(BaseModel):
