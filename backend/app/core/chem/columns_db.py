@@ -416,9 +416,10 @@ _FAMILIES: list[ColumnFamily] = [
         {2.7: _CORESHELL_DIMS}),
 
     ColumnFamily("Agilent", "Poroshell 120 HILIC-Z", "HILIC",
-        (2, 9), 40, None,
-        "Solid core 2.7µm HILIC, zwitterionic phase, polar metabolites, 120Å pore",
-        {2.7: _HILIC_CORESHELL_DIMS}),
+        (2, 12), 80, None,
+        "Solid core HILIC, zwitterionic phase, 120Å pore, pH 2-12, "
+        "polar metabolites, charged polar compounds, 1.9/2.7/4µm",
+        {1.9: _UHPLC_DIMS, 2.7: _HILIC_CORESHELL_DIMS, 4.0: _HILIC_DIMS}),
 
     ColumnFamily("Agilent", "Poroshell 120 Bonus-RP", "C18",
         (2, 9), 60, "L60",
@@ -427,9 +428,134 @@ _FAMILIES: list[ColumnFamily] = [
 
     # InfinityLab Poroshell 120 specialty
     ColumnFamily("Agilent", "InfinityLab Poroshell HILIC-Z", "HILIC",
-        (2, 9), 40, None,
-        "PEEK-lined, zwitterionic, polar metabolomics, vitamins, nucleotides",
+        (2, 12), 80, None,
+        "PEEK-lined, zwitterionic, 120Å pore, pH 2-12, polar metabolomics, "
+        "vitamins, nucleotides, charged compounds, 1.9/2.7/4µm",
+        {1.9: _UHPLC_DIMS, 2.7: _HILIC_CORESHELL_DIMS, 4.0: _HILIC_DIMS}),
+
+    # --- Additional Poroshell 120 phases ---
+    ColumnFamily("Agilent", "Poroshell 120 HPH-C8", "C8",
+        (3, 11), 60, "L7",
+        "Solid core 2.7µm, high pH hybrid C8, 110Å pore, pH 3-11, "
+        "less retentive, bidentate bonding",
+        {2.7: _CORESHELL_DIMS}),
+
+    ColumnFamily("Agilent", "Poroshell 120 SB-C8", "C8",
+        (1, 8), 80, "L7",
+        "Solid core 2.7µm, StableBond C8, low pH, 120Å pore, "
+        "less retentive",
+        {2.7: _CORESHELL_DIMS}),
+
+    ColumnFamily("Agilent", "Poroshell 120 SB-Aq", "C18",
+        (1, 8), 80, "L96",
+        "Solid core 2.7µm, StableBond aqueous, 100% aqueous, 120Å pore, "
+        "polar compounds",
+        {2.7: _CORESHELL_DIMS}),
+
+    ColumnFamily("Agilent", "Poroshell 120 EC-CN", "CN",
+        (2, 8), 60, "L10",
+        "Solid core 2.7µm, cyano, 120Å pore, RP and NP mode, "
+        "alternate selectivity, double endcapped",
+        {2.7: _CORESHELL_DIMS}),
+
+    ColumnFamily("Agilent", "Poroshell 120 HILIC", "HILIC",
+        (0, 8), 60, "L3",
+        "Solid core 2.7µm, unbonded silica HILIC, 120Å pore, "
+        "polar metabolites, 90 m²/g",
         {2.7: _HILIC_CORESHELL_DIMS}),
+
+    ColumnFamily("Agilent", "Poroshell 120 HILIC-OH5", "HILIC",
+        (2, 12), 80, None,
+        "Solid core 2.7µm, diol-bonded HILIC, 120Å pore, pH 2-12, "
+        "polar metabolites, alternative selectivity to HILIC-Z",
+        {2.7: _HILIC_CORESHELL_DIMS}),
+
+    ColumnFamily("Agilent", "Poroshell 120 Aq-C18", "C18",
+        (1, 8), 60, "L1",
+        "Solid core 2.7µm, aqueous-optimized C18, 120Å pore, "
+        "100% aqueous stable, polar compounds",
+        {2.7: _CORESHELL_DIMS}),
+
+    # --- Additional ZORBAX phases ---
+    ColumnFamily("Agilent", "ZORBAX SB-CN", "CN",
+        (1, 8), 80, "L10",
+        "StableBond cyano, low pH, 80Å pore, RP and NP mode, "
+        "alternate selectivity, 1.8/3.5/5µm",
+        {1.8: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Agilent", "ZORBAX SB-C3", "C8",
+        (1, 8), 80, "L7",
+        "StableBond C3 (butyl), low pH, 80Å pore, very low retention, "
+        "proteins/peptides, 1.8/3.5/5µm",
+        {1.8: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Agilent", "ZORBAX Eclipse XDB-CN", "CN",
+        (2, 9), 60, "L10",
+        "Extra dense bonding cyano, 95Å pore, double endcapped, "
+        "RP and NP mode, 1.8/3.5/5µm",
+        {1.8: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Agilent", "ZORBAX Bonus-RP", "C18",
+        (2, 9), 60, "L60",
+        "Polar embedded amide in C14 chain, 80Å pore, triple endcapped, "
+        "100% aqueous stable, unique selectivity, 1.8/3.5/5µm",
+        {1.8: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Agilent", "ZORBAX Eclipse PAH", "C18",
+        (1, 9), 60, "L1",
+        "PAH-optimized C18, 95Å pore, polyaromatic hydrocarbon "
+        "separations, 1.8/3.5/5µm",
+        {1.8: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Agilent", "ZORBAX Rx-C18", "C18",
+        (1, 8), 60, "L1",
+        "High purity silica C18, 80Å pore, monofunctional, "
+        "general purpose, 3.5/5/7µm",
+        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS, 7.0: _CONV_DIMS}),
+
+    ColumnFamily("Agilent", "ZORBAX RRHT Eclipse Plus C18", "C18",
+        (2, 9), 60, "L1",
+        "Rapid Resolution HT, 1.8µm, 600 bar, 95Å pore, "
+        "double endcapped, fast separations",
+        {1.8: _UHPLC_DIMS}),
+
+    ColumnFamily("Agilent", "ZORBAX RRHT Eclipse Plus C8", "C8",
+        (2, 9), 60, "L7",
+        "Rapid Resolution HT, 1.8µm, 600 bar, 95Å pore, "
+        "less retentive, fast separations",
+        {1.8: _UHPLC_DIMS}),
+
+    ColumnFamily("Agilent", "ZORBAX RRHT SB-C18", "C18",
+        (1, 8), 90, "L1",
+        "Rapid Resolution HT StableBond, 1.8µm, 600 bar, 80Å pore, "
+        "low pH optimized",
+        {1.8: _UHPLC_DIMS}),
+
+    ColumnFamily("Agilent", "ZORBAX RRHT SB-C8", "C8",
+        (1, 8), 80, "L7",
+        "Rapid Resolution HT StableBond C8, 1.8µm, 600 bar, 80Å pore, "
+        "low pH, less retentive",
+        {1.8: _UHPLC_DIMS}),
+
+    # ZORBAX HILIC-Plus
+    ColumnFamily("Agilent", "ZORBAX HILIC-Plus", "HILIC",
+        (1, 8), 60, "L3",
+        "Fully porous HILIC, unbonded silica, 100Å pore, 180 m²/g, "
+        "polar metabolites, 1.8/3.5/5µm",
+        {1.8: _UHPLC_DIMS, 3.5: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    # PLRP-S (polymeric RP, pH 1-14)
+    ColumnFamily("Agilent", "PLRP-S 100", "C18",
+        (1, 14), 80, None,
+        "Polymeric reversed-phase, PS-DVB, 100Å pore, pH 1-14, "
+        "high pH and high temp stable, 5/8/10µm",
+        {5.0: _CONV_DIMS, 8.0: _CONV_DIMS, 10.0: _CONV_DIMS}),
+
+    ColumnFamily("Agilent", "PLRP-S 300", "C18",
+        (1, 14), 80, None,
+        "Polymeric reversed-phase, PS-DVB, 300Å pore, pH 1-14, "
+        "proteins and peptides, 5/8/10µm",
+        {5.0: _CONV_DIMS, 8.0: _CONV_DIMS, 10.0: _CONV_DIMS}),
 
     # =======================================================================
     # WATERS
@@ -541,9 +667,10 @@ _FAMILIES: list[ColumnFamily] = [
 
     # Atlantis Premier
     ColumnFamily("Waters", "Atlantis Premier BEH Z-HILIC", "HILIC",
-        (1, 12), 60, "L3",
-        "UPLC, sulfobetaine zwitterionic, MaxPeak low-adsorption hardware, metabolomics",
-        {1.7: _HILIC_CORESHELL_DIMS}),
+        (2, 10), 60, "L3",
+        "Premier BEH Z-HILIC, sulfobetaine zwitterionic, MaxPeak HPS hardware, "
+        "95Å pore, pH 2-10, polar metabolites, metabolomics, 1.7/2.5µm",
+        {1.7: _HILIC_CORESHELL_DIMS, 2.5: _HILIC_CORESHELL_DIMS}),
 
     ColumnFamily("Waters", "Atlantis Premier BEH C18 AX", "C18",
         (1, 12), 60, "L1",
@@ -1109,6 +1236,196 @@ _FAMILIES: list[ColumnFamily] = [
         "Fully porous, polar embedded ether phase, 80Å pore, 100% aqueous",
         {4.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
+    ColumnFamily("Phenomenex", "Synergi Hydro-RP", "C18",
+        (1.5, 10), 60, "L1",
+        "Fully porous, polar endcapped C18, 80Å pore, 100% aqueous stable",
+        {4.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Phenomenex", "Synergi Fusion-RP", "C18",
+        (1.5, 10), 60, "L1",
+        "Fully porous, polar embedded + ether linked, 80Å pore, "
+        "balanced polar/nonpolar retention",
+        {4.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Phenomenex", "Synergi Fusion-RP 80", "C18",
+        (1.5, 10), 60, "L1",
+        "Fully porous, polar embedded, 80Å pore, improved peak shape "
+        "for bases",
+        {4.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    # Kinetex additional phases
+    ColumnFamily("Phenomenex", "Kinetex C8", "C8",
+        (1.5, 10), 60, "L7",
+        "Core-shell C8, 100Å pore, 200 m²/g, less retentive than C18, "
+        "UHPLC/HPLC",
+        {1.7: _UHPLC_DIMS, 2.6: _CORESHELL_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Phenomenex", "Kinetex PS C18", "C18",
+        (1.5, 10), 60, "L1",
+        "Core-shell, positively charged surface C18, 100Å pore, "
+        "improved peak shape for bases, 200 m²/g",
+        {1.7: _UHPLC_DIMS, 2.6: _CORESHELL_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Phenomenex", "Kinetex Phenyl-Hexyl", "phenyl",
+        (1.5, 10), 60, "L11",
+        "Core-shell phenyl-hexyl, 100Å pore, aromatic selectivity, "
+        "100% aqueous stable",
+        {1.7: _UHPLC_DIMS, 2.6: _CORESHELL_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Phenomenex", "Kinetex PAH", "C18",
+        (1.5, 10), 60, "L1",
+        "Core-shell, PAH-optimized C18, 100Å pore, polyaromatic "
+        "hydrocarbon separations",
+        {1.7: _UHPLC_DIMS, 2.6: _CORESHELL_DIMS}),
+
+    # Luna additional phases
+    ColumnFamily("Phenomenex", "Luna Omega C8", "C8",
+        (1.5, 12), 60, "L7",
+        "Fully porous, 110Å pore, 21st century silica, less retentive, "
+        "endcapped",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Phenomenex", "Luna Silica(2)", "HILIC",
+        (2, 8), 50, "L3",
+        "Fully porous unbonded silica, 100Å pore, 480 m²/g, HILIC and "
+        "normal phase, 3/5µm",
+        {3.0: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    ColumnFamily("Phenomenex", "Luna CN", "CN",
+        (2, 8), 45, "L10",
+        "Fully porous cyano, 100Å pore, 400 m²/g, RP and NP mode, "
+        "alternate selectivity, 3/5µm",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Phenomenex", "Luna SCX", "ion_exchange",
+        (2, 7), 50, "L9",
+        "Strong cation exchange, benzene sulfonic acid, 100Å pore, "
+        "basic compounds, 5µm",
+        {5.0: _CONV_DIMS}),
+
+    ColumnFamily("Phenomenex", "Luna SAX", "ion_exchange",
+        (2, 7), 50, "L14",
+        "Strong anion exchange, quaternary ammonium, 100Å pore, "
+        "acidic compounds, 5µm",
+        {5.0: _CONV_DIMS}),
+
+    # Gemini additional
+    ColumnFamily("Phenomenex", "Gemini C8", "C8",
+        (1, 12), 60, "L7",
+        "Fully porous, 110Å pore, pH 1-12, organosilica, less retentive, "
+        "high pH stable",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Phenomenex", "Gemini-NX C8", "C8",
+        (1, 12), 60, "L7",
+        "Fully porous, nano-engineered, 110Å pore, pH 1-12, less retentive",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    # Aeris (core-shell, peptide/protein)
+    ColumnFamily("Phenomenex", "Aeris PEPTIDE XB-C18", "C18",
+        (1.5, 10), 60, "L1",
+        "Core-shell 2.6/3.6µm, 120Å pore, peptide-optimized, "
+        "wide pH, low bleed for LC-MS",
+        {2.6: _CORESHELL_DIMS, 3.6: _HPLC_DIMS}),
+
+    ColumnFamily("Phenomenex", "Aeris WIDEPORE XB-C18", "C18",
+        (1.5, 10), 60, "L1",
+        "Core-shell 3.6µm, 200Å pore, protein/peptide, wide pore, "
+        "high efficiency",
+        {3.6: _HPLC_DIMS}),
+
+    ColumnFamily("Phenomenex", "Aeris WIDEPORE C8", "C8",
+        (1.5, 10), 60, "L7",
+        "Core-shell 3.6µm, 200Å pore, protein/peptide, less retentive",
+        {3.6: _HPLC_DIMS}),
+
+    # Biozen (biomolecule UHPLC)
+    ColumnFamily("Phenomenex", "Biozen dSEC-2", "size_exclusion",
+        (2, 9), 60, None,
+        "UHPLC SEC, 1.7µm, 125Å pore, protein size-based separation, "
+        "low adsorption",
+        {1.7: _UHPLC_DIMS}),
+
+    ColumnFamily("Phenomenex", "Biozen dSEC-3", "size_exclusion",
+        (2, 9), 60, None,
+        "UHPLC SEC, 1.7µm, 200Å pore, larger proteins, mAb analysis",
+        {1.7: _UHPLC_DIMS}),
+
+    ColumnFamily("Phenomenex", "Biozen Intact XB-C18", "C18",
+        (1.5, 10), 60, "L1",
+        "UHPLC 1.7µm, 160Å pore, intact protein analysis, mAb, "
+        "core-shell for high resolution",
+        {1.7: _UHPLC_DIMS}),
+
+    ColumnFamily("Phenomenex", "Biozen Peptide XB-C18", "C18",
+        (1.5, 10), 60, "L1",
+        "UHPLC 1.7µm, 120Å pore, peptide mapping, core-shell, "
+        "low bleed for LC-MS",
+        {1.7: _UHPLC_DIMS}),
+
+    ColumnFamily("Phenomenex", "Biozen PS-C18", "C18",
+        (1.5, 10), 60, "L1",
+        "UHPLC 1.7µm, 120Å pore, positively charged surface, "
+        "peptide peak shape",
+        {1.7: _UHPLC_DIMS}),
+
+    # Lux (chiral)
+    ColumnFamily("Phenomenex", "Lux Cellulose-1", "chiral",
+        (1, 12), 60, "L40",
+        "Chiral, cellulose tris(3,5-dimethylphenylcarbamate), 100Å pore, "
+        "5/3µm, broad chiral selectivity",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Phenomenex", "Lux Cellulose-2", "chiral",
+        (1, 12), 60, "L40",
+        "Chiral, cellulose tris(3-chloro-4-methylphenylcarbamate), 100Å pore, "
+        "complementary selectivity to Cellulose-1",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Phenomenex", "Lux Cellulose-3", "chiral",
+        (1, 12), 60, "L40",
+        "Chiral, cellulose tris(4-methylbenzoate), 100Å pore, "
+        "unique selectivity",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Phenomenex", "Lux Cellulose-4", "chiral",
+        (1, 12), 60, "L40",
+        "Chiral, cellulose tris(4-chloro-3-methylphenylcarbamate), 100Å pore, "
+        "complementary to Cellulose-2",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Phenomenex", "Lux Amylose-1", "chiral",
+        (1, 12), 60, "L51",
+        "Chiral, amylose tris(3,5-dimethylphenylcarbamate), 100Å pore, "
+        "broad chiral applicability",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Phenomenex", "Lux Amylose-2", "chiral",
+        (1, 12), 60, "L51",
+        "Chiral, amylose tris(5-chloro-2-methylphenylcarbamate), 100Å pore, "
+        "orthogonal to Amylose-1",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Phenomenex", "Lux i-Amylose-3", "chiral",
+        (1, 12), 60, "L51",
+        "Chiral, immobilized amylose tris(3,5-dimethylphenylcarbamate), "
+        "100Å pore, solvent-resistant",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    ColumnFamily("Phenomenex", "Lux i-Cellulose-5", "chiral",
+        (1, 12), 60, "L40",
+        "Chiral, immobilized cellulose tris(3,5-dichlorophenylcarbamate), "
+        "100Å pore, solvent-resistant",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+
+    # Clarity (PFAS and aqueous)
+    ColumnFamily("Phenomenex", "Clarity C18", "C18",
+        (1.5, 10), 60, "L1",
+        "UHPLC/HPLC, PFAS-optimized, low background, 110Å pore, "
+        "1.7/2.6/3/5µm",
+        {1.7: _UHPLC_DIMS, 2.6: _CORESHELL_DIMS, 3.0: _HPLC_DIMS,
+         5.0: _CONV_DIMS}),
+
     # =======================================================================
     # RESTEK
     # =======================================================================
@@ -1216,6 +1533,248 @@ _FAMILIES: list[ColumnFamily] = [
         "Charged HILIC, zwitterionic, phosphorylcholine phase, "
         "polar metabolites with alternative selectivity",
         {3.5: [(50, 2.1), (100, 2.1), (150, 2.1), (150, 4.6)]}),
+
+    # =======================================================================
+    # AGILENT — Additional HILIC columns
+    # =======================================================================
+
+    ColumnFamily("Agilent", "InfinityLab Poroshell 120 HILIC", "HILIC",
+        (2, 9), 40, "L3",
+        "Solid core 2.7µm HILIC, unbonded silica, polar metabolites, 120Å pore",
+        {2.7: _HILIC_CORESHELL_DIMS}),
+
+    ColumnFamily("Agilent", "ZORBAX HILIC Plus", "HILIC",
+        (2, 9), 40, "L3",
+        "Fully porous 3.5/5µm HILIC, unbonded silica, 100Å pore, polar compounds",
+        {3.5: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    ColumnFamily("Agilent", "ZORBAX RR HILIC", "HILIC",
+        (2, 9), 40, "L3",
+        "Rapid Resolution 1.8/3.5µm HILIC, unbonded silica, 80Å pore, UHPLC",
+        {1.8: _UHPLC_DIMS, 3.5: _HILIC_DIMS}),
+
+    ColumnFamily("Agilent", "ZORBAX Eclipse Plus HILIC", "HILIC",
+        (2, 9), 40, "L3",
+        "1.8µm HILIC, unbonded silica, 95Å pore, UHPLC, polar analytes",
+        {1.8: _UHPLC_DIMS}),
+
+    ColumnFamily("Agilent", "InfinityLab HILIC-RP", "HILIC",
+        (1, 8), 40, None,
+        "Mixed-mode HILIC/RP, 2.7µm core-shell, 120Å pore, flexible selectivity",
+        {2.7: _HILIC_CORESHELL_DIMS}),
+
+    # =======================================================================
+    # THERMO FISHER — Additional HILIC columns
+    # =======================================================================
+
+    ColumnFamily("Thermo Fisher", "Hypersil GOLD HILIC", "HILIC",
+        (2, 8), 40, "L3",
+        "HPLC HILIC, unbonded silica, 175Å pore, polar compounds, 3/5µm",
+        {3.0: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    ColumnFamily("Thermo Fisher", "Syncronis HILIC", "HILIC",
+        (2, 8), 45, "L3",
+        "HPLC HILIC, unbonded silica, 100Å pore, tightly controlled, 3/5µm",
+        {3.0: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    ColumnFamily("Thermo Fisher", "Acclaim HILIC-10", "HILIC",
+        (2, 7), 40, "L3",
+        "HPLC HILIC, unbonded silica, 120Å pore, polar metabolites, 3µm",
+        {3.0: _HILIC_DIMS}),
+
+    ColumnFamily("Thermo Fisher", "Acclaim Trinity P1", "HILIC",
+        (2, 8), 40, None,
+        "Mixed-mode HILIC + RP + IEX, 3µm, 120Å pore, charged polar compounds",
+        {3.0: _HILIC_DIMS}),
+
+    ColumnFamily("Thermo Fisher", "Acclaim Trinity P2", "HILIC",
+        (2, 8), 40, None,
+        "Mixed-mode HILIC + RP + IEX, 2.7µm core-shell, polar ionic compounds",
+        {2.7: _HILIC_CORESHELL_DIMS}),
+
+    ColumnFamily("Thermo Fisher", "Hypersil SILICA", "HILIC",
+        (2, 8), 50, "L3",
+        "Unbonded silica, 120Å pore, 170 m²/g, HILIC and NP applications, 3/5µm",
+        {3.0: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    # =======================================================================
+    # PHENOMENEX — Additional HILIC columns
+    # =======================================================================
+
+    ColumnFamily("Phenomenex", "Luna HILIC", "HILIC",
+        (2, 9), 45, "L3",
+        "HPLC HILIC, unbonded silica, 200Å pore, polar metabolites, 3/5µm",
+        {3.0: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    ColumnFamily("Phenomenex", "Luna NH2", "HILIC",
+        (2, 9), 45, "L8",
+        "Amino-bonded HILIC, 100Å pore, sugars, nucleotides, 3/5µm",
+        {3.0: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    ColumnFamily("Phenomenex", "Luna Silica", "HILIC",
+        (2, 8), 50, "L3",
+        "Unbonded silica, 100Å pore, 480 m²/g, HILIC and NP, 3/5µm",
+        {3.0: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    ColumnFamily("Phenomenex", "Kinetex HILIC (100Å)", "HILIC",
+        (2, 9), 40, "L3",
+        "Core-shell 2.6µm HILIC, 100Å pore, high efficiency, polar metabolites",
+        {2.6: _HILIC_CORESHELL_DIMS}),
+
+    # =======================================================================
+    # MACHEEREY-NAGEL — HILIC columns
+    # =======================================================================
+
+    ColumnFamily("Macherey-Nagel", "Nucleodur HILIC", "HILIC",
+        (2, 9), 60, "L3",
+        "HPLC HILIC, zwitterionic ammonium-sulfonic acid phase, 110Å pore, "
+        "340 m²/g, 7% carbon, polar compounds, amino acids, nucleosides, 1.8/3/5µm",
+        {1.8: _UHPLC_DIMS, 3.0: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    ColumnFamily("Macherey-Nagel", "Nucleodur NH2-RP", "HILIC",
+        (2, 9), 40, "L8",
+        "Amino-bonded HILIC, 110Å pore, sugars and polar metabolites, 3/5µm",
+        {3.0: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    ColumnFamily("Macherey-Nagel", "Nucleoshell HILIC", "HILIC",
+        (2, 9), 40, "L3",
+        "Core-shell 2.7µm HILIC, 90Å pore, high efficiency, polar analytes",
+        {2.7: _HILIC_CORESHELL_DIMS}),
+
+    # =======================================================================
+    # YMC — HILIC columns
+    # =======================================================================
+
+    ColumnFamily("YMC", "YMC-Triart HILIC", "HILIC",
+        (2, 10), 50, "L3",
+        "Hybrid silica HILIC, 120Å pore, pH 2-10, polar metabolites, 1.9/3/5µm",
+        {1.9: _UHPLC_DIMS, 3.0: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    ColumnFamily("YMC", "YMC-Pack NH2", "HILIC",
+        (2, 7), 50, "L8",
+        "Amino-bonded HILIC, 120Å pore, sugars, nucleotides, 3/5µm",
+        {3.0: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    ColumnFamily("YMC", "YMC-Pack Diol-NP", "HILIC",
+        (2, 7), 50, "L20",
+        "Diol-bonded HILIC, 120Å pore, proteins and polar compounds, 3/5µm",
+        {3.0: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    # =======================================================================
+    # RESTEK — HILIC columns
+    # =======================================================================
+
+    ColumnFamily("Restek", "Raptor HILIC", "HILIC",
+        (2, 8), 40, "L3",
+        "Core-shell 2.7µm HILIC, unbonded silica, 90Å pore, polar metabolites",
+        {2.7: _HILIC_CORESHELL_DIMS}),
+
+    ColumnFamily("Restek", "Ultra HILIC", "HILIC",
+        (2, 8), 40, "L3",
+        "Fully porous HILIC, unbonded silica, 100Å pore, 3/5µm",
+        {3.0: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    # =======================================================================
+    # SHIMADZU — HILIC columns
+    # =======================================================================
+
+    ColumnFamily("Shimadzu", "Shim-pack HILIC", "HILIC",
+        (2, 8), 40, "L3",
+        "HPLC HILIC, unbonded silica, 120Å pore, polar compounds, 3/5µm",
+        {3.0: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    ColumnFamily("Shimadzu", "Shim-pack XR-HILIC", "HILIC",
+        (2, 8), 40, "L3",
+        "UHPLC HILIC, 1.8µm, unbonded silica, 120Å pore, fast polar separations",
+        {1.8: _UHPLC_DIMS}),
+
+    # =======================================================================
+    # POLYLC — PolyHYDROXYETHYL A (HILIC for polar and hydrophilic)
+    # =======================================================================
+
+    ColumnFamily("PolyLC", "PolyHYDROXYETHYL A", "HILIC",
+        (2, 7), 50, None,
+        "Polymeric HILIC, hydroxyethyl phase, 200Å/300Å pore, "
+        "proteins, peptides, polar analytes, 3/5µm",
+        {3.0: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    ColumnFamily("PolyLC", "PolySULFOETHYL A", "HILIC",
+        (2, 7), 50, None,
+        "Strong cation-exchange HILIC, sulfoethyl phase, "
+        "charged polar compounds, peptides, 3/5µm",
+        {3.0: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    # =======================================================================
+    # HILICON / POLYLC — iHILIC zwitterionic HILIC columns
+    # =======================================================================
+
+    ColumnFamily("HILICON", "iHILIC-Fusion", "HILIC",
+        (2, 8), 50, None,
+        "Zwitterionic charge-modulated amide silica, 100Å/200Å pore, "
+        "polar metabolites, sugars, nucleotides, 3.5/5µm",
+        {3.5: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    ColumnFamily("HILICON", "iHILIC-Fusion(+)", "HILIC",
+        (2, 8), 50, None,
+        "Positively charged zwitterionic amide silica, 100Å pore, "
+        "acidic polar compounds, organic acids, 3.5/5µm",
+        {3.5: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    ColumnFamily("HILICON", "iHILIC-Fusion(-)", "HILIC",
+        (2, 8), 50, None,
+        "Negatively charged zwitterionic amide silica, 100Å pore, "
+        "basic polar compounds, amines, 3.5/5µm",
+        {3.5: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    ColumnFamily("HILICON", "iHILIC-Glycan", "HILIC",
+        (2, 8), 50, None,
+        "Zwitterionic amide phase optimized for glycan separations, "
+        "100Å/200Å pore, 3.5/5µm",
+        {3.5: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    # =======================================================================
+    # SIELC — Obelisc (mixed-mode zwitterionic HILIC)
+    # =======================================================================
+
+    ColumnFamily("SIELC", "Obelisc R", "HILIC",
+        (2, 9), 50, None,
+        "Mixed-mode zwitterionic, reversed-phase + ionic, polar and charged "
+        "compounds, 5µm, 100Å pore",
+        {5.0: _HILIC_DIMS}),
+
+    ColumnFamily("SIELC", "Obelisc N", "HILIC",
+        (2, 9), 50, None,
+        "Mixed-mode zwitterionic, normal-phase + ionic, polar and charged "
+        "compounds, 5µm, 100Å pore",
+        {5.0: _HILIC_DIMS}),
+
+    # =======================================================================
+    # ES INDUSTRIES — HILIC columns
+    # =======================================================================
+
+    ColumnFamily("ES Industries", "Inertsil HILIC", "HILIC",
+        (2, 8), 40, "L3",
+        "HPLC HILIC, unbonded silica, 100Å pore, polar metabolites, 3/5µm",
+        {3.0: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    ColumnFamily("ES Industries", "Inertsil Amide", "HILIC",
+        (2, 8), 40, None,
+        "Amide-bonded HILIC, 100Å pore, sugars, nucleotides, 3/5µm",
+        {3.0: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    # =======================================================================
+    # GL SCIENCES — HILIC columns
+    # =======================================================================
+
+    ColumnFamily("GL Sciences", "Inertsil HILIC-2", "HILIC",
+        (2, 8), 40, "L3",
+        "HPLC HILIC, unbonded silica, 150Å pore, high surface area, 3/5µm",
+        {3.0: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+
+    ColumnFamily("GL Sciences", "Inertsil Amide-2", "HILIC",
+        (2, 8), 40, None,
+        "Amide-bonded HILIC, 150Å pore, polar metabolites, 3/5µm",
+        {3.0: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
 ]
 
 
@@ -1603,7 +2162,7 @@ def _fuzzy_token_match(token: str, field: str, threshold: float = 0.6) -> bool:
 
 def _fuzzy_match_tokens(col: ColumnSpec, tokens: list[str]) -> bool:
     """Check if ALL tokens fuzzy-match across name, brand, chemistry fields."""
-    fields = [col.name, col.brand, col.chemistry]
+    fields = [col.name, col.brand, col.chemistry, col.notes]
     return all(any(_fuzzy_token_match(token, f) for f in fields) for token in tokens)
 
 
@@ -1633,7 +2192,7 @@ def list_columns(
         tokens = [t.strip().lower() for t in search.split() if t.strip()]
         if tokens:
             def matches_all(c: ColumnSpec) -> bool:
-                combined = f"{c.name} {c.brand} {c.chemistry}".lower()
+                combined = f"{c.name} {c.brand} {c.chemistry} {c.notes}".lower()
                 return all(t in combined for t in tokens)
             exact = [c for c in result if matches_all(c)]
             # Fuzzy fallback when exact match fails (handles misspellings
