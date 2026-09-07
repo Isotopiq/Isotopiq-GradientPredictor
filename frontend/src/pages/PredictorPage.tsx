@@ -553,6 +553,10 @@ export function PredictorPage() {
   // that slider adjustments are reflected in real time.
   // Debounced so rapid slider dragging doesn't cancel in-flight API calls.
   useEffect(() => {
+    // Don't run any simulation until the user has actually entered a compound
+    // and generated a suggestion or multi-compound result.
+    if (!suggestion && !multiResult && !simResult) return;
+
     const PEAK_COLORS = [
       '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6',
       '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1',
@@ -736,7 +740,7 @@ export function PredictorPage() {
 
   // Fetch model comparison when key inputs change
   useEffect(() => {
-    if (gradientTable.length < 2) {
+    if (gradientTable.length < 2 || (!suggestion && !activeSmiles)) {
       setModelComparison(null);
       return;
     }
