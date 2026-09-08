@@ -36,7 +36,10 @@ export function CompoundPicker({ onSelect, placeholder = 'Select saved compound.
 
   const { data: compounds } = useQuery({
     queryKey: ['compounds', debouncedSearch],
-    queryFn: () => compoundsApi.list(debouncedSearch || undefined, 50, 0),
+    queryFn: async () => {
+      const { compounds } = await compoundsApi.list(debouncedSearch || undefined, 50, 0);
+      return compounds;
+    },
     enabled: open,
   });
 

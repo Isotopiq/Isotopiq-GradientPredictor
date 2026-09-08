@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,13 +36,16 @@ async def create_compound(
 
 @router.get("", response_model=list[CompoundOut])
 async def list_compounds(
+    response: Response,
     db: DBSession,
     current: CurrentUser,
     search: str | None = Query(None),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ) -> list[CompoundOut]:
-    items, _ = await compound_service.list_compounds(db, current.id, search, limit, offset)
+    items, total = await compound_service.list_compounds(db, current.id, search, limit, offset)
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
     return [CompoundOut.model_validate(c) for c in items]
 
 

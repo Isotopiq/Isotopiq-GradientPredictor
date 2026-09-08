@@ -13,10 +13,11 @@ export const compoundsApi = {
   },
 
   list: async (search?: string, limit = 50, offset = 0) => {
-    const { data } = await apiClient.get<Compound[]>('/compounds', {
+    const { data, headers } = await apiClient.get<Compound[]>('/compounds', {
       params: { search, limit, offset },
     });
-    return data;
+    const total = parseInt(headers['x-total-count'] || '0', 10);
+    return { compounds: data, total };
   },
 
   get: async (id: string) => {

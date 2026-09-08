@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.chem.descriptors import compute_descriptors
@@ -106,14 +106,22 @@ async def list_compounds(
     result = await db.execute(stmt)
     items = list(result.scalars().all())
 
-    # Total count (approximate; fine for small datasets)
-    count_stmt = select(Compound)
+    # Total count
+    count_stmt = select(func.count()).select_from(Compound)
     if owner_id is not None:
         count_stmt = count_stmt.where(
             (Compound.owner_id == owner_id) | (Compound.is_shared.is_(True))
         )
+    if search:
+        like = f"%{search}%"
+        count_stmt = count_stmt.where(
+            (Compound.name.ilike(like))
+            | (Compound.smiles.ilike(like))
+            | (Compound.inchikey.ilike(like))
+            | (Compound.cas.ilike(like))
+        )
     total_result = await db.execute(count_stmt)
-    total = len(list(total_result.scalars().all()))
+    total = total_result.scalar() or 0
     return items, total
 
 

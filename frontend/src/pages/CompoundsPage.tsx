@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Trash2, Search, Plus, FlaskConical, ChevronDown, X, Edit3, Check, Share2, Layers, ListPlus, FolderOpen, ArrowRight, Upload } from 'lucide-react';
+import { Trash2, Search, Plus, FlaskConical, ChevronDown, ChevronLeft, ChevronRight, X, Edit3, Check, Share2, Layers, ListPlus, FolderOpen, ArrowRight, Upload } from 'lucide-react';
 import { compoundsApi } from '@/api/compounds';
 import { compoundListsApi } from '@/api/compoundLists';
 import { CompoundSearch } from '@/components/CompoundSearch';
@@ -23,6 +23,8 @@ export function CompoundsPage() {
   const [pasteSmiles, setPasteSmiles] = useState('');
   const [pasteName, setPasteName] = useState('');
   const [selectedCompound, setSelectedCompound] = useState<Compound | null>(null);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(50);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -32,10 +34,19 @@ export function CompoundsPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const { data: compounds, isLoading } = useQuery({
-    queryKey: ['compounds', debouncedSearch],
-    queryFn: () => compoundsApi.list(debouncedSearch || undefined),
+  // Reset to first page when search or page size changes
+  useEffect(() => {
+    setPage(0);
+  }, [debouncedSearch, pageSize]);
+
+  const { data: result, isLoading } = useQuery({
+    queryKey: ['compounds', debouncedSearch, page, pageSize],
+    queryFn: () => compoundsApi.list(debouncedSearch || undefined, pageSize, page * pageSize),
   });
+
+  const compounds = result?.compounds;
+  const total = result?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   const createMutation = useMutation({
     mutationFn: (data: { smiles?: string; name?: string; lookup?: boolean }) =>
@@ -204,8 +215,8 @@ export function CompoundsPage() {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <span className="text-xs text-muted-foreground">
-              {compounds?.length ?? 0} compound{(compounds?.length ?? 0) !== 1 ? 's' : ''}
+            <span className="text-xs text-muted-foreground whitespace-nowrap">
+              {total} compound{total !== 1 ? 's' : ''}
             </span>
           </div>
 
@@ -217,19 +228,82 @@ export function CompoundsPage() {
               ))}
             </div>
           ) : compounds && compounds.length > 0 ? (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {compounds.map((c) => (
-                <CompoundCard
-                  key={c.id}
-                  compound={c}
-                  onDelete={() => handleDelete(c.id, c.name)}
-                  onUse={() => handleUseInPredictor(c)}
-                  onUpdate={(data) => updateMutation.mutate({ id: c.id, data })}
-                  updating={updateMutation.isPending}
-                  onStructureClick={() => setSelectedCompound(c)}
-                />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {compounds.map((c) => (
+                  <CompoundCard
+                    key={c.id}
+                    compound={c}
+                    onDelete={() => handleDelete(c.id, c.name)}
+                    onUse={() => handleUseInPredictor(c)}
+                    onUpdate={(data) => updateMutation.mutate({ id: c.id, data })}
+                    updating={updateMutation.isPending}
+                    onStructureClick={() => setSelectedCompound(c)}
+                  />
+                ))}
+              </div>
+
+              {/* Pagination */}
+              {total > pageSize && (
+                <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-between">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>Rows per page:</span>
+                    <select
+                      value={pageSize}
+                      onChange={(e) => setPageSize(Number(e.target.value))}
+                      className="rounded border border-border bg-background px-2 py-1 text-xs"
+                    >
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                      <option value={200}>200</option>
+                    </select>
+                    <span className="ml-2">
+                      {page * pageSize + 1}–{Math.min((page + 1) * pageSize, total)} of {total}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setPage(Math.max(0, page - 1))}
+                      disabled={page === 0}
+                      className="rounded border border-border p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <span className="px-2 text-xs text-muted-foreground">
+                      Page {page + 1} of {totalPages}
+                    </span>
+                    <button
+                      onClick={() => setPage(Math.min(totalPages - 1, page + 1))}
+                      disabled={page >= totalPages - 1}
+                      className="rounded border border-border p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Per-page selector when all fit on one page but user wants control */}
+              {total <= pageSize && total > 0 && (
+                <div className="mt-6 flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>Rows per page:</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => setPageSize(Number(e.target.value))}
+                    className="rounded border border-border bg-background px-2 py-1 text-xs"
+                  >
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                    <option value={200}>200</option>
+                  </select>
+                  <span className="ml-2">
+                    {page * pageSize + 1}–{Math.min((page + 1) * pageSize, total)} of {total}
+                  </span>
+                </div>
+              )}
+            </>
           ) : (
             <EmptyState
               icon={<FlaskConical size={24} />}
@@ -275,7 +349,10 @@ function CompoundListsTab() {
 
   const { data: allCompounds } = useQuery({
     queryKey: ['compounds', ''],
-    queryFn: () => compoundsApi.list(),
+    queryFn: async () => {
+      const { compounds } = await compoundsApi.list(undefined, 500, 0);
+      return compounds;
+    },
   });
 
   const saveMutation = useMutation({
