@@ -838,6 +838,14 @@ export function PredictorPage() {
       const compoundSmiles = compounds
         .map((c) => c.smiles)
         .filter((s) => s && s.trim());
+      // Collect library compound IDs (only for compounds that came from the library)
+      const compoundIds = compounds
+        .map((c) => c.compound?.id)
+        .filter((id): id is string => !!id);
+      // Collect names (prefer library name, fallback to entry name)
+      const compoundNames = compounds
+        .map((c) => c.compound?.name || c.name || null)
+        .filter((n): n is string => !!n);
       await methodsApi.create({
         name,
         column_type: colType,
@@ -849,6 +857,8 @@ export function PredictorPage() {
         temperature_c: temperature,
         gradient_table: gradientTable,
         compounds_smiles: compoundSmiles.length > 0 ? compoundSmiles : undefined,
+        compound_ids: compoundIds.length > 0 ? compoundIds : undefined,
+        compound_names: compoundNames.length > 0 ? compoundNames : undefined,
         dwell_volume_ml: dwellVolume || undefined,
         dead_volume_ml: deadVolume || undefined,
       });

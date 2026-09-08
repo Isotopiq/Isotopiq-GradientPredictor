@@ -136,6 +136,7 @@ async def export_method(
         pdf_bytes = export_method_pdf(
             method, compound, None, settings_dict,
             sections=section_opts,
+            compound_names=method.compound_names,
         )
         return StreamingResponse(
             io.BytesIO(pdf_bytes),
@@ -259,7 +260,10 @@ async def export_shared_method(
     section_opts.optimization = False
     section_opts.method_transfer = False
 
-    pdf_bytes = export_method_pdf(method, None, None, settings_dict, sections=section_opts)
+    pdf_bytes = export_method_pdf(
+        method, None, None, settings_dict, sections=section_opts,
+        compound_names=method.compound_names,
+    )
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",

@@ -79,6 +79,10 @@ export function MethodLibraryPage() {
     return selected?.compounds_smiles?.filter((s) => s && s.trim()) ?? [];
   }, [selected]);
 
+  const compoundNames = useMemo(() => {
+    return selected?.compound_names ?? [];
+  }, [selected]);
+
   useEffect(() => {
     if (!selected || compoundSmiles.length === 0 || !editGradientTable.length) {
       setChromatogram(null);
@@ -88,6 +92,12 @@ export function MethodLibraryPage() {
 
     let cancelled = false;
     setSimulating(true);
+
+    // Build a lookup of compound names from the method
+    const smilesToName = new Map<string, string>();
+    compoundSmiles.forEach((smi, i) => {
+      if (compoundNames[i]) smilesToName.set(smi, compoundNames[i]);
+    });
 
     const timer = setTimeout(async () => {
       try {
@@ -128,6 +138,8 @@ export function MethodLibraryPage() {
         const peaks = await Promise.all(
           validEntries.map(async (pc, i) => {
             const effectiveLogP = adjustLogPForPh(pc.logp ?? 2.0, pc.pka_values);
+            const smi = compoundSmiles[pc.index] || '';
+            const label = smilesToName.get(smi) || compoundNames[pc.index] || `Compound ${pc.index + 1}`;
             try {
               const sim = await methodsApi.simulateGradient({
                 gradient_table: editGradientTable,
@@ -143,7 +155,7 @@ export function MethodLibraryPage() {
                 rt_s: sim.predicted_rt_s * tempRtFactor,
                 width_s: (pc.peak_width_s || 10) * tempWidthFactor,
                 height: 1.0,
-                label: `Compound ${pc.index + 1}`,
+                label,
                 color: PEAK_COLORS[i % PEAK_COLORS.length],
               };
             } catch {
@@ -151,7 +163,7 @@ export function MethodLibraryPage() {
                 rt_s: pc.predicted_rt_s! * tempRtFactor,
                 width_s: (pc.peak_width_s || 10) * tempWidthFactor,
                 height: 1.0,
-                label: `Compound ${pc.index + 1}`,
+                label,
                 color: PEAK_COLORS[i % PEAK_COLORS.length],
               };
             }
@@ -176,7 +188,7 @@ export function MethodLibraryPage() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [selected, compoundSmiles, editGradientTable, editFlowRate, editPh, editTemperature]);
+  }, [selected, compoundSmiles, compoundNames, editGradientTable, editFlowRate, editPh, editTemperature]);
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => methodsApi.delete(id),
@@ -232,6 +244,8 @@ export function MethodLibraryPage() {
         temperature_c: editTemperature,
         gradient_table: editGradientTable,
         compounds_smiles: selected.compounds_smiles ?? undefined,
+        compound_ids: selected.compound_ids ?? undefined,
+        compound_names: selected.compound_names ?? undefined,
       });
       toast.success('Method saved as new version');
       queryClient.invalidateQueries({ queryKey: ['methods-library'] });
@@ -584,6 +598,39 @@ export function MethodLibraryPage() {
                       <DetailRow label="Steps" value={selected.gradient_table ? `${selected.gradient_table.length}` : '—'} />
                     </div>
                   )}
+
+                  {/* Compound list */}
+                  {compoundSmiles.length > 0 && (
+                    <div className="mt-3 border-t border-border pt-3">
+                      <h4 className="text-xs font-semibold text-muted-foreground mb-2">
+                        Compounds ({compoundSmiles.length})
+                      </h4>
+                      <div className="flex flex-wrap gap-1.5">
+                        {compoundSmiles.map((smi, i) => {
+                          const name = compoundNames[i] || smi.slice(0, 20);
+                          const cid = selected.compound_ids?.[i];
+                          return (
+                            <span
+                              key={i}
+                              className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/50 px-2 py-1 text-xs"
+                              title={smi}
+                            >
+                              <span className="font-medium">{name}</span>
+                              {cid && (
+                                <a
+                                  href={`/compounds`}
+                                  className="text-accent hover:underline"
+                                  title="View in compound library"
+                                >
+                                  <FlaskConical size={10} />
+                                </a>
+                              )}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* XIC Chromatogram Overlay */}
@@ -621,9 +668,12 @@ export function MethodLibraryPage() {
                               </tr>
                             </thead>
                             <tbody>
-                              {multiResult.resolution_matrix.map((r, i) => (
+                              {multiResult.resolution_matrix.map((r, i) => {
+                                const nameA = compoundNames[r.compound_a] || compoundSmiles[r.compound_a]?.slice(0, 12) || `#${r.compound_a + 1}`;
+                                const nameB = compoundNames[r.compound_b] || compoundSmiles[r.compound_b]?.slice(0, 12) || `#${r.compound_b + 1}`;
+                                return (
                                 <tr key={i}>
-                                  <td>#{r.compound_a + 1} / #{r.compound_b + 1}</td>
+                                  <td className="text-xs">{nameA} / {nameB}</td>
                                   <td className="tabular-nums">{(r.rt_a / 60).toFixed(2)}</td>
                                   <td className="tabular-nums">{(r.rt_b / 60).toFixed(2)}</td>
                                   <td className="tabular-nums">{r.resolution.toFixed(2)}</td>
@@ -635,7 +685,8 @@ export function MethodLibraryPage() {
                                     )}
                                   </td>
                                 </tr>
-                              ))}
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>

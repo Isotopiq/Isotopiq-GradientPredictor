@@ -116,6 +116,8 @@ async def create_method(
         temperature_c=data.temperature_c,
         method_signature=signature,
         compounds_smiles=data.compounds_smiles,  # type: ignore[arg-type]
+        compound_ids=data.compound_ids,  # type: ignore[arg-type]
+        compound_names=data.compound_names,  # type: ignore[arg-type]
         dwell_volume_ml=data.dwell_volume_ml,
         dead_volume_ml=data.dead_volume_ml,
     )

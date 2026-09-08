@@ -38,6 +38,12 @@ class Method(Base, UUIDPK, Timestamped):
     # SMILES strings of compounds used to generate this method (for re-simulation)
     compounds_smiles: Mapped[list[str] | None] = mapped_column(JSONBCompat, nullable=True)
 
+    # Compound IDs from the user's library (for linking back to saved compounds)
+    compound_ids: Mapped[list[str] | None] = mapped_column(JSONBCompat, nullable=True)
+
+    # Compound names (for display without needing to resolve IDs)
+    compound_names: Mapped[list[str] | None] = mapped_column(JSONBCompat, nullable=True)
+
     # Hash of column+pH+modifier signature used to key ML models
     method_signature: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 

@@ -27,6 +27,8 @@ class MethodCreate(BaseModel):
     temperature_c: float | None = None
     method_signature: str | None = None
     compounds_smiles: list[str] | None = None
+    compound_ids: list[str] | None = None
+    compound_names: list[str] | None = None
     dwell_volume_ml: float | None = None
     dead_volume_ml: float | None = None
 
@@ -48,6 +50,8 @@ class MethodOut(ORMModel):
     is_shared: bool = False
     share_token: str | None = None
     compounds_smiles: list[str] | None = None
+    compound_ids: list[str] | None = None
+    compound_names: list[str] | None = None
     dwell_volume_ml: float | None = None
     dead_volume_ml: float | None = None
 

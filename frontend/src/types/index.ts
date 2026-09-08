@@ -181,6 +181,8 @@ export interface Method {
   is_shared: boolean;
   share_token: string | null;
   compounds_smiles: string[] | null;
+  compound_ids: string[] | null;
+  compound_names: string[] | null;
   dwell_volume_ml: number | null;
   dead_volume_ml: number | null;
 }
@@ -197,6 +199,8 @@ export interface MethodCreate {
   flow_rate_ml_min?: number;
   temperature_c?: number;
   compounds_smiles?: string[];
+  compound_ids?: string[];
+  compound_names?: string[];
   dwell_volume_ml?: number;
   dead_volume_ml?: number;
 }
