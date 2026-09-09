@@ -25,6 +25,11 @@ export const compoundsApi = {
     return data;
   },
 
+  getByIds: async (ids: string[]) => {
+    const { data } = await apiClient.post<Compound[]>('/compounds/by-ids', { ids });
+    return data;
+  },
+
   delete: async (id: string) => {
     await apiClient.delete(`/compounds/${id}`);
   },

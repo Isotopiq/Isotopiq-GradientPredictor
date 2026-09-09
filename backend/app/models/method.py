@@ -44,6 +44,13 @@ class Method(Base, UUIDPK, Timestamped):
     # Compound names (for display without needing to resolve IDs)
     compound_names: Mapped[list[str] | None] = mapped_column(JSONBCompat, nullable=True)
 
+    # Retention model used to generate this method (for transparency/display)
+    retention_model: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    retention_model_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    retention_model_equation: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    retention_model_reference: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    retention_model_rationale: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
     # Hash of column+pH+modifier signature used to key ML models
     method_signature: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 

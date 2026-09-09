@@ -185,6 +185,11 @@ export interface Method {
   compound_names: string[] | null;
   dwell_volume_ml: number | null;
   dead_volume_ml: number | null;
+  retention_model: string | null;
+  retention_model_label: string | null;
+  retention_model_equation: string | null;
+  retention_model_reference: string | null;
+  retention_model_rationale: string | null;
 }
 
 export interface MethodCreate {
@@ -203,6 +208,11 @@ export interface MethodCreate {
   compound_names?: string[];
   dwell_volume_ml?: number;
   dead_volume_ml?: number;
+  retention_model?: string;
+  retention_model_label?: string;
+  retention_model_equation?: string;
+  retention_model_reference?: string;
+  retention_model_rationale?: string;
 }
 
 export interface ColumnSuggestion {

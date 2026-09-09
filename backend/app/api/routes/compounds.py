@@ -183,6 +183,33 @@ async def pka_plot(smiles: str = Query(...)) -> dict[str, Any]:
     }
 
 
+@router.post("/by-ids", response_model=list[CompoundOut])
+async def get_compounds_by_ids(
+    body: dict[str, list[str]],
+    db: DBSession,
+    current: CurrentUser,
+) -> list[CompoundOut]:
+    """Fetch multiple compounds by ID in a single request."""
+    raw_ids = body.get("ids", [])
+    if not raw_ids:
+        return []
+    parsed_ids: list[uuid.UUID] = []
+    for raw in raw_ids:
+        try:
+            parsed_ids.append(uuid.UUID(raw))
+        except ValueError:
+            continue
+    if not parsed_ids:
+        return []
+    compounds = await compound_service.get_compounds_by_ids(db, parsed_ids)
+    # Filter to compounds the user can see (owned or shared)
+    visible = [
+        c for c in compounds
+        if c.owner_id is None or c.owner_id == current.id or c.is_shared
+    ]
+    return [CompoundOut.model_validate(c) for c in visible]
+
+
 # --- Parameterized routes (MUST be last) ---
 
 

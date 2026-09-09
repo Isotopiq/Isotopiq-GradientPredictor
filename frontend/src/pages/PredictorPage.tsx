@@ -146,6 +146,10 @@ export function PredictorPage() {
   const [listName, setListName] = useState('');
   const [listDescription, setListDescription] = useState('');
   const [editingListId, setEditingListId] = useState<string | null>(null);
+  // Compound list search + pagination
+  const [compoundSearch, setCompoundSearch] = useState('');
+  const [compoundPage, setCompoundPage] = useState(0);
+  const [compoundPageSize, setCompoundPageSize] = useState(25);
 
   // Right-panel tab state: 'results' | 'optimization' | 'advanced'
   const [rightTab, setRightTab] = useState<'results' | 'optimization' | 'advanced'>('results');
@@ -272,16 +276,8 @@ export function PredictorPage() {
       return;
     }
     try {
-      // Fetch all compounds in the list
-      const fetched: Compound[] = [];
-      for (const cid of list.compound_ids) {
-        try {
-          const c = await compoundsApi.get(cid);
-          fetched.push(c);
-        } catch {
-          // Skip compounds that can't be fetched
-        }
-      }
+      // Batch-fetch all compounds in one request
+      const fetched = await compoundsApi.getByIds(list.compound_ids);
       if (fetched.length === 0) {
         toast.error('Could not load any compounds from this list');
         return;
@@ -301,6 +297,8 @@ export function PredictorPage() {
         fetchSuggestion(first.smiles);
       }
       setMultiResult(null);
+      setCompoundSearch('');
+      setCompoundPage(0);
       toast.success(`Loaded "${list.name}" (${fetched.length} compounds)`);
     } catch {
       toast.error('Failed to load compound list');
@@ -861,6 +859,11 @@ export function PredictorPage() {
         compound_names: compoundNames.length > 0 ? compoundNames : undefined,
         dwell_volume_ml: dwellVolume || undefined,
         dead_volume_ml: deadVolume || undefined,
+        retention_model: activeModelInfo?.mechanism ? retentionModel || undefined : retentionModel || undefined,
+        retention_model_label: activeModelInfo?.modelLabel || undefined,
+        retention_model_equation: activeModelInfo?.modelEquation || undefined,
+        retention_model_reference: activeModelInfo?.modelReference || undefined,
+        retention_model_rationale: activeModelInfo?.modelRationale || undefined,
       });
 
       // Optionally save as template too
@@ -1045,22 +1048,91 @@ export function PredictorPage() {
               </div>
             ) : (
               <div className="mt-3 space-y-2">
-                {compounds.map((entry, i) => {
-                  const pcEntry = multiResult?.per_compound?.find((pc) => pc.index === i);
-                  const predictedRtMin = pcEntry?.predicted_rt_s != null
-                    ? pcEntry.predicted_rt_s / 60
-                    : null;
-                  return (
-                  <CompoundListEntry
-                    key={entry.id}
-                    entry={entry}
-                    index={i}
-                    predictedRtMin={predictedRtMin}
-                    onRemove={() => handleRemoveCompound(entry.id)}
-                    onRename={(name) => handleRenameCompound(entry.id, name)}
+                {/* Search + pagination controls */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    className="input input-sm flex-1"
+                    placeholder="Search compounds..."
+                    value={compoundSearch}
+                    onChange={(e) => { setCompoundSearch(e.target.value); setCompoundPage(0); }}
                   />
+                  <select
+                    className="input input-sm w-20"
+                    value={compoundPageSize}
+                    onChange={(e) => { setCompoundPageSize(Number(e.target.value)); setCompoundPage(0); }}
+                  >
+                    {[10, 25, 50, 100].map((n) => (
+                      <option key={n} value={n}>{n}/pg</option>
+                    ))}
+                  </select>
+                </div>
+
+                {(() => {
+                  const q = compoundSearch.toLowerCase();
+                  const filtered = q
+                    ? compounds.filter((c) =>
+                        (c.name || '').toLowerCase().includes(q) ||
+                        (c.smiles || '').toLowerCase().includes(q) ||
+                        (c.compound?.cas || '').toLowerCase().includes(q)
+                      )
+                    : compounds;
+                  const totalPages = Math.max(1, Math.ceil(filtered.length / compoundPageSize));
+                  const page = Math.min(compoundPage, totalPages - 1);
+                  const paginated = filtered.slice(page * compoundPageSize, (page + 1) * compoundPageSize);
+                  const startIdx = page * compoundPageSize;
+                  const endIdx = Math.min(filtered.length, startIdx + compoundPageSize);
+                  return (
+                    <>
+                      <div className="space-y-2">
+                        {paginated.map((entry, i) => {
+                          const pcEntry = multiResult?.per_compound?.find((pc) => pc.index === startIdx + i);
+                          const predictedRtMin = pcEntry?.predicted_rt_s != null
+                            ? pcEntry.predicted_rt_s / 60
+                            : null;
+                          return (
+                            <CompoundListEntry
+                              key={entry.id}
+                              entry={entry}
+                              index={startIdx + i}
+                              predictedRtMin={predictedRtMin}
+                              onRemove={() => handleRemoveCompound(entry.id)}
+                              onRename={(name) => handleRenameCompound(entry.id, name)}
+                            />
+                          );
+                        })}
+                      </div>
+                      {filtered.length > compoundPageSize && (
+                        <div className="flex items-center justify-between border-t border-border pt-2">
+                          <span className="text-xs text-muted-foreground">
+                            {startIdx + 1}–{endIdx} of {filtered.length}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setCompoundPage((p) => Math.max(0, p - 1))}
+                              disabled={page === 0}
+                              className="btn-ghost btn-sm"
+                            >
+                              Prev
+                            </button>
+                            <span className="text-xs tabular-nums px-1">
+                              {page + 1}/{totalPages}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setCompoundPage((p) => Math.min(totalPages - 1, p + 1))}
+                              disabled={page >= totalPages - 1}
+                              className="btn-ghost btn-sm"
+                            >
+                              Next
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   );
-                })}
+                })()}
               </div>
             )}
 

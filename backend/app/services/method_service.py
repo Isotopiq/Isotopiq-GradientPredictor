@@ -120,6 +120,11 @@ async def create_method(
         compound_names=data.compound_names,  # type: ignore[arg-type]
         dwell_volume_ml=data.dwell_volume_ml,
         dead_volume_ml=data.dead_volume_ml,
+        retention_model=data.retention_model,
+        retention_model_label=data.retention_model_label,
+        retention_model_equation=data.retention_model_equation,
+        retention_model_reference=data.retention_model_reference,
+        retention_model_rationale=data.retention_model_rationale,
     )
     db.add(method)
     await db.commit()

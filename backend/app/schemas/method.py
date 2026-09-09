@@ -31,6 +31,11 @@ class MethodCreate(BaseModel):
     compound_names: list[str] | None = None
     dwell_volume_ml: float | None = None
     dead_volume_ml: float | None = None
+    retention_model: str | None = None
+    retention_model_label: str | None = None
+    retention_model_equation: str | None = None
+    retention_model_reference: str | None = None
+    retention_model_rationale: str | None = None
 
 
 class MethodOut(ORMModel):
@@ -54,6 +59,11 @@ class MethodOut(ORMModel):
     compound_names: list[str] | None = None
     dwell_volume_ml: float | None = None
     dead_volume_ml: float | None = None
+    retention_model: str | None = None
+    retention_model_label: str | None = None
+    retention_model_equation: str | None = None
+    retention_model_reference: str | None = None
+    retention_model_rationale: str | None = None
 
 
 class MethodSuggestionRequest(BaseModel):

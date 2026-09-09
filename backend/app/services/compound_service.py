@@ -83,6 +83,15 @@ async def get_compound(db: AsyncSession, compound_id: uuid.UUID) -> Compound | N
     return await db.get(Compound, compound_id)
 
 
+async def get_compounds_by_ids(
+    db: AsyncSession, compound_ids: list[uuid.UUID]
+) -> list[Compound]:
+    """Fetch multiple compounds by ID in a single query."""
+    stmt = select(Compound).where(Compound.id.in_(compound_ids))
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
+
+
 async def list_compounds(
     db: AsyncSession,
     owner_id: uuid.UUID | None,

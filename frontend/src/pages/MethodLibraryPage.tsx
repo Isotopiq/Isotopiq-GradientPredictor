@@ -246,6 +246,11 @@ export function MethodLibraryPage() {
         compounds_smiles: selected.compounds_smiles ?? undefined,
         compound_ids: selected.compound_ids ?? undefined,
         compound_names: selected.compound_names ?? undefined,
+        retention_model: selected.retention_model ?? undefined,
+        retention_model_label: selected.retention_model_label ?? undefined,
+        retention_model_equation: selected.retention_model_equation ?? undefined,
+        retention_model_reference: selected.retention_model_reference ?? undefined,
+        retention_model_rationale: selected.retention_model_rationale ?? undefined,
       });
       toast.success('Method saved as new version');
       queryClient.invalidateQueries({ queryKey: ['methods-library'] });
@@ -632,6 +637,45 @@ export function MethodLibraryPage() {
                     </div>
                   )}
                 </div>
+
+                {/* Retention Model / Equation */}
+                {selected.retention_model_equation && (
+                  <div className="card-scientific">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-semibold">
+                        Retention Model
+                        {selected.retention_model_label && (
+                          <span className="ml-2 text-xs font-normal text-muted-foreground">
+                            {selected.retention_model_label}
+                          </span>
+                        )}
+                      </h3>
+                      {selected.retention_model && (
+                        <span className="badge badge-info">{selected.retention_model}</span>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
+                        <div className="text-xs font-semibold text-muted-foreground mb-1">Equation</div>
+                        <code className="text-sm font-mono">
+                          {selected.retention_model_equation}
+                        </code>
+                      </div>
+                      {selected.retention_model_rationale && (
+                        <div className="text-xs text-muted-foreground">
+                          <span className="font-semibold">Rationale: </span>
+                          {selected.retention_model_rationale}
+                        </div>
+                      )}
+                      {selected.retention_model_reference && (
+                        <div className="text-xs text-muted-foreground">
+                          <span className="font-semibold">Reference: </span>
+                          {selected.retention_model_reference}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* XIC Chromatogram Overlay */}
                 {compoundSmiles.length > 0 ? (
