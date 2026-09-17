@@ -20,7 +20,10 @@ from app.services.ml_service import predict_with_ml
 
 
 async def predict(
-    db: AsyncSession, compound_id: uuid.UUID, method_id: uuid.UUID
+    db: AsyncSession,
+    compound_id: uuid.UUID,
+    method_id: uuid.UUID,
+    owner_id: uuid.UUID | None = None,
 ) -> Prediction:
     """Predict retention time for a compound on a method.
 
@@ -35,6 +38,13 @@ async def predict(
         raise ValueError("Compound not found")
     if method is None:
         raise ValueError("Method not found")
+    if owner_id is not None:
+        if (compound.owner_id is not None and compound.owner_id != owner_id
+                and not compound.is_shared):
+            raise ValueError("Compound not found")
+        if (method.owner_id is not None and method.owner_id != owner_id
+                and not method.is_shared):
+            raise ValueError("Method not found")
 
     # 1. Try trained ML model first
     ml_result = await predict_with_ml(db, compound, method)

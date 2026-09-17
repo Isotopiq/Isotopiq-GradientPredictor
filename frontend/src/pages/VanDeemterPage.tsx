@@ -1,19 +1,28 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Gauge, Calculator, Info, Search, X } from 'lucide-react';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine, ReferenceDot, Legend,
+  ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, ReferenceLine, ReferenceArea, ReferenceDot, Legend,
 } from 'recharts';
 import { methodsApi } from '@/api/methods';
 import { columnsApi } from '@/api/columns';
+import { compoundsApi } from '@/api/compounds';
 import { toast } from 'sonner';
-import type { ColumnSpec, VanDeemterResult } from '@/types';
+import type { ColumnSpec, Compound, VanDeemterResult } from '@/types';
 
 const PARTICLE_TYPES = [
   { value: 'fully_porous', label: 'Fully porous' },
   { value: 'core_shell', label: 'Core-shell (SPP)' },
   { value: 'hybrid', label: 'Hybrid (BEH-type)' },
   { value: 'graphitic', label: 'Graphitic (PGC)' },
+];
+
+const ANALYTE_MODES = [
+  { value: 'typical', label: 'Typical small molecule (~300 Da)' },
+  { value: 'compound', label: 'Compound(s) from library' },
+  { value: 'mz', label: 'm/z + charge' },
+  { value: 'mw', label: 'Explicit MW' },
+  { value: 'mw_range', label: 'MW range' },
 ];
 
 export function VanDeemterPage() {
@@ -31,9 +40,19 @@ export function VanDeemterPage() {
   const [solventB, setSolventB] = useState('acetonitrile');
   const [fractionB, setFractionB] = useState(0.5);
   const [tempC, setTempC] = useState(40);
-  const [mw, setMw] = useState(300);
-  const [dmOverride, setDmOverride] = useState('');
   const [maxPressure, setMaxPressure] = useState(600);
+
+  // Analyte size — MW only affects the optimal flow via Dm (MW^-0.6)
+  const [analyteMode, setAnalyteMode] = useState('typical');
+  const [mw, setMw] = useState(300);
+  const [mwMin, setMwMin] = useState('');
+  const [mwMax, setMwMax] = useState('');
+  const [mz, setMz] = useState('');
+  const [charge, setCharge] = useState(1);
+  const [compoundSearch, setCompoundSearch] = useState('');
+  const [compoundOptions, setCompoundOptions] = useState<Compound[]>([]);
+  const [selectedCompounds, setSelectedCompounds] = useState<Compound[]>([]);
+  const [dmOverride, setDmOverride] = useState('');
 
   // Assessment / speed mode
   const [currentFlow, setCurrentFlow] = useState('');
@@ -79,7 +98,48 @@ export function VanDeemterPage() {
     setColumnSearch('');
   };
 
+  // Debounced compound search (analyte "compound" mode)
+  useEffect(() => {
+    if (analyteMode !== 'compound' || !compoundSearch.trim()) {
+      setCompoundOptions([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      try {
+        const res = await compoundsApi.list(compoundSearch, 10);
+        setCompoundOptions(res.compounds);
+      } catch {
+        setCompoundOptions([]);
+      }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [compoundSearch, analyteMode]);
+
+  const pickCompound = (c: Compound) => {
+    if (!selectedCompounds.some((s) => s.id === c.id)) {
+      setSelectedCompounds([...selectedCompounds, c]);
+    }
+    setCompoundSearch('');
+    setCompoundOptions([]);
+  };
+
+  const removeCompound = (id: string) => {
+    setSelectedCompounds(selectedCompounds.filter((c) => c.id !== id));
+  };
+
   const handleCompute = async () => {
+    if (analyteMode === 'compound' && selectedCompounds.length === 0) {
+      toast.error('Select at least one compound from your library');
+      return;
+    }
+    if (analyteMode === 'mz' && !mz) {
+      toast.error('Enter an m/z value');
+      return;
+    }
+    if (analyteMode === 'mw_range' && (!mwMin || !mwMax)) {
+      toast.error('Enter both MW bounds');
+      return;
+    }
     setLoading(true);
     try {
       const res = await methodsApi.vanDeemter({
@@ -91,7 +151,14 @@ export function VanDeemterPage() {
         solvent_b: solventB,
         fraction_b: fractionB,
         temperature_c: tempC,
-        analyte_mw: mw,
+        analyte_mode: analyteMode,
+        analyte_mw: analyteMode === 'mw' ? mw : undefined,
+        mw_min: analyteMode === 'mw_range' ? parseFloat(mwMin) : undefined,
+        mw_max: analyteMode === 'mw_range' ? parseFloat(mwMax) : undefined,
+        mz: analyteMode === 'mz' ? parseFloat(mz) : undefined,
+        charge: analyteMode === 'mz' ? charge : undefined,
+        compound_ids:
+          analyteMode === 'compound' ? selectedCompounds.map((c) => c.id) : undefined,
         dm_m2_s: dmOverride ? parseFloat(dmOverride) : undefined,
         current_flow_ml_min: currentFlow ? parseFloat(currentFlow) : undefined,
         max_pressure_bar: maxPressure,
@@ -107,6 +174,18 @@ export function VanDeemterPage() {
 
   const opt = result?.optimum_efficiency;
   const assessment = result?.current_assessment;
+
+  const chartData = useMemo(
+    () =>
+      result?.curve.map((p) => ({
+        ...p,
+        band:
+          p.h_low_um != null && p.h_high_um != null
+            ? ([p.h_low_um, p.h_high_um] as [number, number])
+            : undefined,
+      })),
+    [result],
+  );
 
   const verdictClass = useMemo(() => {
     if (!assessment) return '';
@@ -202,14 +281,99 @@ export function VanDeemterPage() {
           </label>
           <NumField label="%B (fraction 0–1)" value={fractionB} onChange={setFractionB} step={0.05} />
           <NumField label="Temperature (°C)" value={tempC} onChange={setTempC} step={1} />
-          <NumField label="Analyte MW (Da)" value={mw} onChange={setMw} step={10} />
-          <TextField
-            label="Dₘ override (m²/s, optional)"
-            value={dmOverride}
-            onChange={setDmOverride}
-            placeholder="auto via Wilke-Chang"
-          />
           <NumField label="Max pressure (bar)" value={maxPressure} onChange={setMaxPressure} step={50} />
+        </div>
+
+        {/* Analyte size — optional, weakly affects optimal flow only */}
+        <div className="mt-3 border-t border-border/50 pt-3">
+          <label className="block">
+            <span className="text-xs text-muted-foreground">Analyte size (optional — affects optimal flow only, ~MW<sup>−0.6</sup>)</span>
+            <select
+              value={analyteMode}
+              onChange={(e) => setAnalyteMode(e.target.value)}
+              className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm sm:w-1/3"
+            >
+              {ANALYTE_MODES.map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+          </label>
+
+          <div className="mt-2">
+            {analyteMode === 'mw' && (
+              <NumField label="Analyte MW (Da)" value={mw} onChange={setMw} step={10} />
+            )}
+            {analyteMode === 'mw_range' && (
+              <div className="grid grid-cols-2 gap-2 sm:max-w-md">
+                <TextField label="MW min (Da)" value={mwMin} onChange={setMwMin} placeholder="e.g. 150" />
+                <TextField label="MW max (Da)" value={mwMax} onChange={setMwMax} placeholder="e.g. 800" />
+              </div>
+            )}
+            {analyteMode === 'mz' && (
+              <div className="grid grid-cols-2 gap-2 sm:max-w-md">
+                <TextField label="m/z" value={mz} onChange={setMz} placeholder="e.g. 610.3" />
+                <label className="block">
+                  <span className="text-xs text-muted-foreground">Charge z</span>
+                  <input
+                    type="number"
+                    value={charge}
+                    onChange={(e) => setCharge(parseInt(e.target.value, 10) || 1)}
+                    className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm"
+                  />
+                </label>
+              </div>
+            )}
+            {analyteMode === 'compound' && (
+              <div className="relative">
+                <input
+                  type="text"
+                  value={compoundSearch}
+                  onChange={(e) => setCompoundSearch(e.target.value)}
+                  placeholder="Search your compound library…"
+                  className="w-full rounded border border-border bg-background px-2 py-1 text-sm sm:w-2/3"
+                />
+                {compoundOptions.length > 0 && (
+                  <div className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded border border-border bg-card shadow-lg sm:w-2/3">
+                    {compoundOptions.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => pickCompound(c)}
+                        className="block w-full px-3 py-1.5 text-left text-xs hover:bg-muted"
+                      >
+                        <span className="font-medium">{c.name}</span>
+                        <span className="text-muted-foreground">
+                          {' '}— {c.mw != null ? `${c.mw.toFixed(1)} Da` : 'no MW'}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {selectedCompounds.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {selectedCompounds.map((c) => (
+                      <span key={c.id} className="badge badge-muted flex items-center gap-1">
+                        {c.name}{c.mw != null && ` (${c.mw.toFixed(0)} Da)`}
+                        <button onClick={() => removeCompound(c.id)}><X className="h-3 w-3" /></button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            H<sub>min</sub> and plate count are MW-independent — only the optimum
+            flow position moves (u<sub>opt</sub> ∝ D<sub>m</sub> ∝ MW<sup>−0.6</sup>).
+            Multiple analytes produce a banded curve and a flow window.
+          </p>
+          <div className="mt-2 sm:max-w-xs">
+            <TextField
+              label="Dₘ override (m²/s, optional)"
+              value={dmOverride}
+              onChange={setDmOverride}
+              placeholder="auto via Wilke-Chang"
+            />
+          </div>
         </div>
       </div>
 
@@ -263,6 +427,22 @@ export function VanDeemterPage() {
                     ? <span className="badge badge-warning">pressure-capped</span>
                     : <span className="badge badge-success">unconstrained</span>}
                 </div>
+                {result.flow_window && (
+                  <div className="col-span-2 border-t border-border/50 pt-1">
+                    <span className="text-muted-foreground">Flow window across analytes:</span>{' '}
+                    <span className="font-medium">
+                      {result.flow_window.low_flow_ml_min.toFixed(3)}–{result.flow_window.high_flow_ml_min.toFixed(3)} mL/min
+                    </span>
+                  </div>
+                )}
+                {result.analytes.source !== 'dm_override' && result.analytes.mw_used != null && (
+                  <div className="col-span-2 text-muted-foreground">
+                    Analyte MW used: {result.analytes.mw_used} Da
+                    {result.analytes.mw_min !== result.analytes.mw_max &&
+                      ` (range ${result.analytes.mw_min}–${result.analytes.mw_max} Da)`}
+                    {result.analytes.source === 'typical' && ' — assumed typical small molecule'}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -317,9 +497,11 @@ export function VanDeemterPage() {
               {' '}a={result.coefficients.a}, b={result.coefficients.b}, c={result.coefficients.c};
               {' '}D<sub>m</sub>={result.dm_m2_s.toExponential(2)} m²/s, η={result.viscosity_cp.toFixed(2)} cP,
               {' '}V₀={result.column.holdup_volume_ml.toFixed(3)} mL
+              {result.analytes.mw_used != null &&
+                `, MW=${result.analytes.mw_used} Da (${result.analytes.source})`}
             </div>
             <ResponsiveContainer width="100%" height={280} className="mt-2">
-              <LineChart data={result.curve} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
+              <ComposedChart data={chartData} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis
                   dataKey="flow_ml_min"
@@ -346,6 +528,22 @@ export function VanDeemterPage() {
                   labelFormatter={(v: number) => `${v.toFixed(3)} mL/min`}
                 />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
+                {result.flow_window && (
+                  <ReferenceArea
+                    yAxisId="h"
+                    x1={result.flow_window.low_flow_ml_min}
+                    x2={result.flow_window.high_flow_ml_min}
+                    fill="hsl(224, 76%, 48%)"
+                    fillOpacity={0.08}
+                    stroke="none"
+                    label={{ value: 'flow window', position: 'insideTop', fontSize: 10, fill: 'hsl(224, 76%, 48%)' }}
+                  />
+                )}
+                <Area
+                  yAxisId="h" type="monotone" dataKey="band" name="MW band (µm)"
+                  stroke="none" fill="hsl(224, 76%, 48%)" fillOpacity={0.15}
+                  connectNulls={false}
+                />
                 <Line
                   yAxisId="h" type="monotone" dataKey="h_um" name="H (µm)"
                   stroke="hsl(224, 76%, 48%)" strokeWidth={2} dot={false}
@@ -363,7 +561,7 @@ export function VanDeemterPage() {
                   yAxisId="h" x={opt.flow_ml_min} y={opt.h_um}
                   r={4} fill="hsl(224, 76%, 48%)" stroke="none"
                 />
-              </LineChart>
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
 

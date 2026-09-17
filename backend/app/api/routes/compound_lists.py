@@ -10,6 +10,7 @@ from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 
 from app.core.chem.descriptors import compute_descriptors
 from app.core.chem.parser import ChemParseError, parse_mol
+from app.core.file_validation import read_upload_limited
 from app.deps import CurrentUser, DBSession
 from app.models.compound import Compound
 from app.schemas.compound_list import (
@@ -228,12 +229,7 @@ async def parse_csv(
     Accepts CSV files with columns like: compound, formula, rt, charge, smiles, inchikey, cas.
     Flexible header detection — see _COLUMN_ALIASES for recognized names.
     """
-    content_bytes = await file.read()
-    if len(content_bytes) > _MAX_CSV_SIZE_BYTES:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            f"File exceeds maximum size of {_MAX_CSV_SIZE_BYTES // 1024 // 1024} MB",
-        )
+    content_bytes = await read_upload_limited(file, _MAX_CSV_SIZE_BYTES)
 
     # Decode — try UTF-8, fall back to latin-1
     try:

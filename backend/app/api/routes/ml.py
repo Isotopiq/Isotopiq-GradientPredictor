@@ -4,16 +4,16 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 
-from app.deps import CurrentUser, DBSession
+from app.core.file_validation import MAX_CSV_BYTES, read_upload_limited
 from app.core.ml.registry import (
     delete_artifact,
     get_artifact,
     list_artifacts,
     load_model_from_artifact,
 )
+from app.deps import CurrentUser, DBSession
 from app.schemas.ml import ModelArtifactOut, TrainRequest, TrainResponse
 from app.services import ml_service
 
@@ -64,7 +64,7 @@ async def train_from_csv(
     model_type: str = Query("xgboost"),
 ) -> TrainResponse:
     """Train a model from an uploaded CSV file."""
-    content = await file.read()
+    content = await read_upload_limited(file, MAX_CSV_BYTES)
     try:
         artifact = await ml_service.train_from_csv(
             db=db,
@@ -93,13 +93,15 @@ async def list_models(
     current: CurrentUser,
     column_type: str | None = Query(None),
 ) -> list[ModelArtifactOut]:
-    artifacts = await list_artifacts(db, column_type)
+    owner_id = None if current.is_admin else current.id
+    artifacts = await list_artifacts(db, column_type, owner_id=owner_id)
     return [ModelArtifactOut.model_validate(a) for a in artifacts]
 
 
 @router.get("/models/{artifact_id}", response_model=ModelArtifactOut)
 async def get_model(artifact_id: uuid.UUID, db: DBSession, current: CurrentUser) -> ModelArtifactOut:
-    artifact = await get_artifact(db, artifact_id)
+    owner_id = None if current.is_admin else current.id
+    artifact = await get_artifact(db, artifact_id, owner_id)
     if artifact is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Model not found")
     return ModelArtifactOut.model_validate(artifact)
@@ -107,7 +109,8 @@ async def get_model(artifact_id: uuid.UUID, db: DBSession, current: CurrentUser)
 
 @router.delete("/models/{artifact_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_model(artifact_id: uuid.UUID, db: DBSession, current: CurrentUser) -> None:
-    ok = await delete_artifact(db, artifact_id)
+    owner_id = None if current.is_admin else current.id
+    ok = await delete_artifact(db, artifact_id, owner_id)
     if not ok:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Model not found")
 
@@ -116,11 +119,12 @@ async def delete_model(artifact_id: uuid.UUID, db: DBSession, current: CurrentUs
 async def model_stats(db: DBSession, current: CurrentUser) -> dict:
     """Get aggregate model statistics for the dashboard."""
     from sqlalchemy import func, select
-    from app.models.model_artifact import ModelArtifact
+
     from app.models.compound import Compound
     from app.models.method import Method
-    from app.models.run import Run
+    from app.models.model_artifact import ModelArtifact
     from app.models.prediction import Prediction
+    from app.models.run import Run
 
     # Build owner filter for non-admin users
     uid = None if current.is_admin else current.id
@@ -229,7 +233,8 @@ async def get_feature_importance(
     artifact_id: uuid.UUID, db: DBSession, current: CurrentUser
 ) -> dict[str, Any]:
     """Get feature importances for a trained model."""
-    artifact = await get_artifact(db, artifact_id)
+    owner_id = None if current.is_admin else current.id
+    artifact = await get_artifact(db, artifact_id, owner_id)
     if artifact is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Model not found")
     try:
@@ -255,9 +260,11 @@ async def get_model_history(
 ) -> dict[str, Any]:
     """Get version history for a model (all versions with same column_type + method_signature)."""
     from sqlalchemy import select
+
     from app.models.model_artifact import ModelArtifact
 
-    artifact = await get_artifact(db, artifact_id)
+    owner_id = None if current.is_admin else current.id
+    artifact = await get_artifact(db, artifact_id, owner_id)
     if artifact is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Model not found")
 
@@ -269,6 +276,8 @@ async def get_model_history(
         )
         .order_by(ModelArtifact.version)
     )
+    if owner_id is not None:
+        stmt = stmt.where(ModelArtifact.owner_id == owner_id)
     result = await db.execute(stmt)
     versions = []
     for a in result.scalars().all():
@@ -295,11 +304,13 @@ async def get_model_history(
 async def performance_trends(db: DBSession, current: CurrentUser) -> dict[str, Any]:
     """Get aggregate performance trends over time."""
     from sqlalchemy import select
+
     from app.models.model_artifact import ModelArtifact
 
-    result = await db.execute(
-        select(ModelArtifact).order_by(ModelArtifact.trained_at)
-    )
+    stmt = select(ModelArtifact).order_by(ModelArtifact.trained_at)
+    if not current.is_admin:
+        stmt = stmt.where(ModelArtifact.owner_id == current.id)
+    result = await db.execute(stmt)
     trends: list[dict[str, Any]] = []
     for a in result.scalars().all():
         metrics = a.train_metrics or {}
@@ -321,10 +332,11 @@ async def performance_trends(db: DBSession, current: CurrentUser) -> dict[str, A
 async def calibration_data(db: DBSession, current: CurrentUser) -> dict[str, Any]:
     """Get predicted vs observed RT pairs for calibration plotting."""
     from sqlalchemy import select
-    from app.models.run import Run
-    from app.models.prediction import Prediction
+
     from app.models.compound import Compound
     from app.models.method import Method
+    from app.models.prediction import Prediction
+    from app.models.run import Run
 
     # Join predictions with runs (observed) on compound + method
     stmt = (
@@ -332,6 +344,10 @@ async def calibration_data(db: DBSession, current: CurrentUser) -> dict[str, Any
         .join(Run, (Prediction.compound_id == Run.compound_id) & (Prediction.method_id == Run.method_id))
         .join(Compound, Prediction.compound_id == Compound.id)
     )
+    if not current.is_admin:
+        stmt = stmt.join(Method, Prediction.method_id == Method.id).where(
+            Method.owner_id == current.id
+        )
     result = await db.execute(stmt)
     points: list[dict[str, Any]] = []
     for pred, run, compound in result.all():

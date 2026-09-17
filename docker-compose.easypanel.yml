@@ -59,6 +59,8 @@ services:
   backend:
     build: ./backend
     environment:
+      # Fail-fast on default secrets in production
+      APP_ENV: "production"
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-lcms}:${POSTGRES_PASSWORD:-changeme}@db:5432/${POSTGRES_DB:-lcms}
       JWT_SECRET: ${JWT_SECRET:-change-this-to-a-long-random-string}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}

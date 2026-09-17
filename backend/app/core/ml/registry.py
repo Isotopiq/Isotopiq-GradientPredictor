@@ -1,6 +1,7 @@
 """Model registry: per-column model versioning + artifact storage."""
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,6 +24,23 @@ MODEL_CLASSES: dict[str, type[RetentionModel]] = {
     "sklearn": SklearnGBMModel,
     "ensemble": EnsembleModel,
 }
+
+_FILENAME_SAFE = re.compile(r"[^A-Za-z0-9_.-]+")
+
+
+def _artifact_path(column_type: str, method_signature: str, version: int) -> Path:
+    """Build the artifact path inside MODEL_STORAGE_PATH.
+
+    Sanitizes the user-influenced components and verifies the resolved path
+    stays inside the storage directory (defends against path traversal via
+    values like '../..')."""
+    storage = Path(settings.model_storage_path).resolve()
+    safe_col = _FILENAME_SAFE.sub("_", column_type)[:64]
+    safe_sig = _FILENAME_SAFE.sub("_", method_signature)[:64]
+    path = (storage / f"{safe_col}_{safe_sig}_v{version}.pkl").resolve()
+    if path.parent != storage:
+        raise ValueError("Invalid artifact path")
+    return path
 
 
 def get_model_class(model_type: str) -> type[RetentionModel]:
@@ -62,9 +80,7 @@ async def save_artifact(
     latest = result.scalar_one_or_none()
     version = (latest.version + 1) if latest else 1
 
-    storage_path = Path(settings.model_storage_path)
-    artifact_filename = f"{column_type}_{method_signature}_v{version}.pkl"
-    artifact_path = storage_path / artifact_filename
+    artifact_path = _artifact_path(column_type, method_signature, version)
     model.save(artifact_path)
 
     artifact = ModelArtifact(
@@ -102,27 +118,50 @@ async def get_latest_artifact(
 
 
 async def list_artifacts(
-    db: AsyncSession, column_type: str | None = None, limit: int = 50
+    db: AsyncSession,
+    column_type: str | None = None,
+    limit: int = 50,
+    owner_id: uuid.UUID | None = None,
 ) -> list[ModelArtifact]:
     stmt = select(ModelArtifact).order_by(desc(ModelArtifact.trained_at))
     if column_type:
         stmt = stmt.where(ModelArtifact.column_type == column_type)
+    if owner_id is not None:
+        stmt = stmt.where(ModelArtifact.owner_id == owner_id)
     stmt = stmt.limit(limit)
     result = await db.execute(stmt)
     return list(result.scalars().all())
 
 
-async def get_artifact(db: AsyncSession, artifact_id: uuid.UUID) -> ModelArtifact | None:
-    return await db.get(ModelArtifact, artifact_id)
-
-
-async def delete_artifact(db: AsyncSession, artifact_id: uuid.UUID) -> bool:
+async def get_artifact(
+    db: AsyncSession,
+    artifact_id: uuid.UUID,
+    owner_id: uuid.UUID | None = None,
+) -> ModelArtifact | None:
+    """Fetch an artifact. When owner_id is given, non-owned artifacts return
+    None (caller turns that into 404/403)."""
     artifact = await db.get(ModelArtifact, artifact_id)
     if artifact is None:
+        return None
+    if owner_id is not None and artifact.owner_id not in (None, owner_id):
+        return None
+    return artifact
+
+
+async def delete_artifact(
+    db: AsyncSession,
+    artifact_id: uuid.UUID,
+    owner_id: uuid.UUID | None = None,
+) -> bool:
+    artifact = await get_artifact(db, artifact_id, owner_id)
+    if artifact is None:
         return False
-    # Delete file
+    # Delete file — confine to the storage directory
     try:
-        Path(artifact.artifact_path).unlink(missing_ok=True)
+        storage = Path(settings.model_storage_path).resolve()
+        artifact_file = Path(artifact.artifact_path).resolve()
+        if artifact_file.parent == storage:
+            artifact_file.unlink(missing_ok=True)
     except Exception:
         pass
     await db.delete(artifact)

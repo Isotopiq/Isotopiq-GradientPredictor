@@ -42,6 +42,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    // Revoke the refresh session server-side (best-effort), then clear locally.
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (refreshToken) {
+      authApi.logout(refreshToken).catch(() => undefined);
+    }
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     setUser(null);

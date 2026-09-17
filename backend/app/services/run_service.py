@@ -19,6 +19,18 @@ MIN_NEW_RUNS_FOR_RETRAIN = 3
 
 
 async def create_run(db: AsyncSession, owner_id: uuid.UUID | None, data: RunCreate) -> Run:
+    # Verify the caller may attach a run to this compound/method
+    from app.models.compound import Compound
+
+    method = await db.get(Method, data.method_id)
+    if method is None or (method.owner_id is not None and method.owner_id != owner_id
+                          and not method.is_shared):
+        raise ValueError("Method not found")
+    compound = await db.get(Compound, data.compound_id)
+    if compound is None or (compound.owner_id is not None and compound.owner_id != owner_id
+                            and not compound.is_shared):
+        raise ValueError("Compound not found")
+
     run = Run(
         compound_id=data.compound_id,
         method_id=data.method_id,
@@ -95,8 +107,11 @@ async def list_runs(
     method_id: uuid.UUID | None = None,
     limit: int = 100,
     offset: int = 0,
+    owner_id: uuid.UUID | None = None,
 ) -> list[Run]:
     stmt = select(Run).order_by(Run.run_date.desc().nullslast(), Run.created_at.desc())
+    if owner_id is not None:
+        stmt = stmt.where(Run.owner_id == owner_id)
     if compound_id:
         stmt = stmt.where(Run.compound_id == compound_id)
     if method_id:
@@ -106,9 +121,13 @@ async def list_runs(
     return list(result.scalars().all())
 
 
-async def delete_run(db: AsyncSession, run_id: uuid.UUID) -> bool:
+async def delete_run(
+    db: AsyncSession, run_id: uuid.UUID, owner_id: uuid.UUID | None = None
+) -> bool:
     run = await db.get(Run, run_id)
     if run is None:
+        return False
+    if owner_id is not None and run.owner_id not in (None, owner_id):
         return False
     await db.delete(run)
     await db.commit()

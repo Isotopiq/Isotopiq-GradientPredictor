@@ -74,7 +74,6 @@ import math
 from dataclasses import dataclass, field
 from typing import Any
 
-
 # ---------------------------------------------------------------------------
 # Van Deemter coefficients (reduced Knox parameters), literature-typical
 # ---------------------------------------------------------------------------
@@ -99,6 +98,28 @@ DEFAULT_INTERSTITIAL_POROSITY = 0.40  # eps_e, external/interparticle void
 
 # Standard analytical IDs for the diameter mapping table
 STANDARD_IDS_MM = (1.0, 1.5, 2.1, 3.0, 4.6)
+
+# Analyte-size defaults: MW only enters through Dm (~MW^-0.6), so a
+# "typical small molecule" default is a reasonable, forgiving choice.
+DEFAULT_ANALYTE_MW = 300.0
+PROTON_MASS_DA = 1.007276  # proton mass for [M+zH]^z+ / [M-zH]^z- adducts
+
+
+def mz_to_neutral_mw(mz: float, charge: int) -> float:
+    """Neutral mass from an m/z and signed charge (proton adducts).
+
+        MW = |z| * m/z - z * proton_mass
+
+    z=+1 ([M+H]+)  -> MW = m/z - 1.0073
+    z=-1 ([M-H]-)  -> MW = m/z + 1.0073
+    z=+2           -> MW = 2*m/z - 2.0146
+    """
+    if charge == 0:
+        raise ValueError("charge must be non-zero")
+    mw = abs(charge) * mz - charge * PROTON_MASS_DA
+    if mw <= 0:
+        raise ValueError(f"m/z {mz} at charge {charge} gives non-positive mass")
+    return mw
 
 
 # ---------------------------------------------------------------------------
@@ -350,15 +371,24 @@ class CurvePoint:
     h_um: float
     n: float
     pressure_bar: float
+    # Optional band bounds when multiple analyte Dm values were evaluated
+    # (the extreme-Dm curves cross at nu_opt, so the band envelopes them).
+    h_low_um: float | None = None
+    h_high_um: float | None = None
 
     def to_dict(self) -> dict[str, float]:
-        return {
+        d = {
             "flow_ml_min": round(self.flow_ml_min, 4),
             "u_mm_s": round(self.u_mm_s, 3),
             "h_um": round(self.h_um, 3),
             "n": round(self.n),
             "pressure_bar": round(self.pressure_bar, 1),
         }
+        if self.h_low_um is not None:
+            d["h_low_um"] = round(self.h_low_um, 3)
+        if self.h_high_um is not None:
+            d["h_high_um"] = round(self.h_high_um, 3)
+        return d
 
 
 @dataclass
@@ -426,8 +456,14 @@ def van_deemter_curve(
     flow_min_ml_min: float,
     flow_max_ml_min: float,
     points: int = 60,
+    band_dm: tuple[float, float] | None = None,
 ) -> list[CurvePoint]:
-    """Plate-height curve over a flow range."""
+    """Plate-height curve over a flow range.
+
+    ``band_dm`` optionally provides the extreme (lowest, highest) analyte
+    diffusion coefficients; each point then also carries h_low/h_high —
+    the envelope of the curves at those Dm values (they cross at nu_opt).
+    """
     a, b, c = col.coeffs()
     eps_t = col.resolved_eps_t()
     out: list[CurvePoint] = []
@@ -436,6 +472,13 @@ def van_deemter_curve(
         f = flow_min_ml_min + (flow_max_ml_min - flow_min_ml_min) * i / (n_pts - 1)
         u = flow_to_linear_velocity(f, col.inner_diameter_mm, eps_t)
         h = plate_height_um(u, col.particle_size_um, dm_m2_s, a, b, c)
+        h_low = h_high = None
+        if band_dm is not None:
+            h1 = plate_height_um(u, col.particle_size_um, band_dm[0], a, b, c)
+            h2 = plate_height_um(u, col.particle_size_um, band_dm[1], a, b, c)
+            # Envelope of all evaluated curves — the extreme-Dm curves cross
+            # at nu_opt, where the mid curve can dip below both, so include h.
+            h_low, h_high = min(h, h1, h2), max(h, h1, h2)
         out.append(CurvePoint(
             flow_ml_min=f,
             u_mm_s=u,
@@ -444,6 +487,8 @@ def van_deemter_curve(
             pressure_bar=backpressure_bar(
                 f, col.inner_diameter_mm, col.length_mm,
                 col.particle_size_um, eta_cp, col.porosity_interstitial),
+            h_low_um=h_low,
+            h_high_um=h_high,
         ))
     return out
 

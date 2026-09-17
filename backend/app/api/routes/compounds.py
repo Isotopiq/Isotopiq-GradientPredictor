@@ -4,18 +4,22 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from fastapi.responses import HTMLResponse
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, HTTPException, Query, Response, status
 
-from app.core.chem.pubchem import PubChemError, lookup_by_cas, lookup_by_name
-from app.core.chem.chemspider import search_compounds_multi_source, ChemSpiderError
+from app.core.chem.chemspider import ChemSpiderError, search_compounds_multi_source
+from app.core.chem.descriptors import compute_descriptors
 from app.core.chem.logd import fraction_ionized, logd_at_ph
 from app.core.chem.parser import ChemParseError, parse_mol
 from app.core.chem.pka import estimate_pka_sites
-from app.core.chem.descriptors import compute_descriptors
+from app.core.chem.pubchem import PubChemError, lookup_by_cas, lookup_by_name
 from app.deps import CurrentUser, DBSession
-from app.schemas.compound import CompoundBatchCreate, CompoundCreate, CompoundOut, CompoundUpdate, PubChemLookupOut
+from app.schemas.compound import (
+    CompoundBatchCreate,
+    CompoundCreate,
+    CompoundOut,
+    CompoundUpdate,
+    PubChemLookupOut,
+)
 from app.services import compound_service
 
 router = APIRouter(prefix="/compounds", tags=["compounds"])
@@ -54,6 +58,7 @@ async def list_compounds(
 
 @router.get("/pubchem/lookup", response_model=PubChemLookupOut)
 async def pubchem_lookup(
+    current: CurrentUser,
     name: str | None = Query(None),
     cas: str | None = Query(None),
 ) -> PubChemLookupOut:
@@ -79,6 +84,7 @@ async def pubchem_lookup(
 
 @router.get("/search/multi")
 async def search_compounds_multi(
+    current: CurrentUser,
     name: str = Query(..., min_length=2),
     limit: int = Query(10, ge=1, le=50),
 ) -> list[dict[str, str]]:
@@ -90,16 +96,25 @@ async def search_compounds_multi(
     return results
 
 
-@router.get("/depiction", response_class=HTMLResponse)
+@router.get("/depiction")
 async def depict_molecule(
+    current: CurrentUser,
     smiles: str = Query(...),
     width: int = Query(400, ge=50, le=2000),
     height: int = Query(300, ge=50, le=2000),
-) -> str:
+) -> Response:
     """Render a 2D SVG depiction of a molecule from SMILES."""
     try:
         from app.core.chem.depiction import render_2d_svg
-        return render_2d_svg(smiles, width, height)
+        svg = render_2d_svg(smiles, width, height)
+        return Response(
+            content=svg,
+            media_type="image/svg+xml",
+            headers={
+                "X-Content-Type-Options": "nosniff",
+                "Content-Security-Policy": "default-src 'none'",
+            },
+        )
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     except ImportError as exc:
@@ -124,7 +139,7 @@ async def batch_create_compounds(
 
 
 @router.get("/pka-plot")
-async def pka_plot(smiles: str = Query(...)) -> dict[str, Any]:
+async def pka_plot(current: CurrentUser, smiles: str = Query(...)) -> dict[str, Any]:
     """Return pKa sites and ionization fractions across pH range for plotting."""
     try:
         parsed = parse_mol(smiles)

@@ -924,7 +924,15 @@ export interface VanDeemterRequest {
   solvent_b?: string;
   fraction_b?: number;
   temperature_c?: number;
+  // Analyte size: typical|compound|mz|mw|mw_range — MW only shifts the
+  // optimal flow via Dm; h_min/N are MW-independent.
+  analyte_mode?: string;
   analyte_mw?: number;
+  mw_min?: number;
+  mw_max?: number;
+  mz?: number;
+  charge?: number;
+  compound_ids?: string[];
   dm_m2_s?: number;
   current_flow_ml_min?: number;
   flow_min_ml_min?: number;
@@ -941,6 +949,8 @@ export interface VanDeemterPoint {
   h_um: number;
   n: number;
   pressure_bar: number;
+  h_low_um?: number;
+  h_high_um?: number;
 }
 
 export interface VanDeemterOptimum {
@@ -990,6 +1000,15 @@ export interface VanDeemterResult {
   particle_type: string;
   coefficients: { a: number; b: number; c: number };
   solvent: { solvent_b: string; fraction_b: number; temperature_c: number };
+  analytes: {
+    source: string;
+    mws: number[];
+    mw_used: number | null;
+    mw_min: number | null;
+    mw_max: number | null;
+    compound_names: string[] | null;
+  };
+  flow_window: { low_flow_ml_min: number; high_flow_ml_min: number } | null;
   dm_m2_s: number;
   viscosity_cp: number;
   curve: VanDeemterPoint[];

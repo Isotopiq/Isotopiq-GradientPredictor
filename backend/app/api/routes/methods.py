@@ -1,6 +1,7 @@
 """Method routes: suggest, CRUD, gradient simulation, chromatogram, templates, sharing."""
 from __future__ import annotations
 
+import math
 import secrets
 import uuid
 
@@ -63,7 +64,7 @@ router = APIRouter(prefix="/methods", tags=["methods"])
 # --- Retention models registry ---
 
 @router.get("/retention-models")
-async def get_retention_models() -> dict:
+async def get_retention_models(current: CurrentUser) -> dict:
     """Return all supported retention mechanisms and models, plus auto-selection.
 
     Query params (all optional):
@@ -108,6 +109,7 @@ async def get_retention_models() -> dict:
 
 @router.get("/retention-models/auto-select")
 async def auto_select_retention_model(
+    current: CurrentUser,
     column_type: str | None = None,
     column_id: str | None = None,
     has_calibration: bool = False,
@@ -155,7 +157,7 @@ async def auto_select_retention_model(
 
 
 @router.post("/compare-models")
-async def compare_models(data: GradientSimulateRequest) -> dict:
+async def compare_models(data: GradientSimulateRequest, current: CurrentUser) -> dict:
     """Run all applicable retention models and return a comparison of predicted RTs.
 
     Uses the same inputs as /gradient/simulate but runs every applicable model
@@ -191,7 +193,7 @@ async def compare_models(data: GradientSimulateRequest) -> dict:
 
 
 @router.post("/suggest", response_model=MethodSuggestionOut)
-async def suggest_method(data: MethodSuggestionRequest) -> MethodSuggestionOut:
+async def suggest_method(data: MethodSuggestionRequest, current: CurrentUser) -> MethodSuggestionOut:
     try:
         result = method_service.suggest(data)
     except method_service.MethodServiceError as exc:
@@ -200,19 +202,19 @@ async def suggest_method(data: MethodSuggestionRequest) -> MethodSuggestionOut:
 
 
 @router.post("/gradient/simulate", response_model=GradientSimulateOut)
-async def simulate_gradient(data: GradientSimulateRequest) -> GradientSimulateOut:
+async def simulate_gradient(data: GradientSimulateRequest, current: CurrentUser) -> GradientSimulateOut:
     result = method_service.simulate_gradient(data)
     return GradientSimulateOut.model_validate(result)
 
 
 @router.post("/chromatogram", response_model=ChromatogramOut)
-async def simulate_chromatogram(data: ChromatogramRequest) -> ChromatogramOut:
+async def simulate_chromatogram(data: ChromatogramRequest, current: CurrentUser) -> ChromatogramOut:
     result = method_service.simulate_chromatogram_from_request(data)
     return ChromatogramOut.model_validate(result)
 
 
 @router.post("/suggest-multi", response_model=MultiCompoundSuggestionOut)
-async def suggest_multi_method(data: MultiCompoundSuggestionRequest) -> MultiCompoundSuggestionOut:
+async def suggest_multi_method(data: MultiCompoundSuggestionRequest, current: CurrentUser) -> MultiCompoundSuggestionOut:
     result = method_service.suggest_multi(
         smiles_list=data.smiles_list,
         ionization_mode=data.ionization_mode,
@@ -231,7 +233,7 @@ async def suggest_multi_method(data: MultiCompoundSuggestionRequest) -> MultiCom
 
 
 @router.post("/optimize-gradient", response_model=OptimizeGradientOut)
-async def optimize_gradient(data: OptimizeGradientRequest) -> OptimizeGradientOut:
+async def optimize_gradient(data: OptimizeGradientRequest, current: CurrentUser) -> OptimizeGradientOut:
     """Grid-search for the gradient parameters that maximize separation."""
     result = method_service.optimize_gradient_separation(
         smiles_list=data.smiles_list,
@@ -246,7 +248,7 @@ async def optimize_gradient(data: OptimizeGradientRequest) -> OptimizeGradientOu
 
 
 @router.post("/adducts")
-async def predict_adducts(data: dict) -> dict:
+async def predict_adducts(data: dict, current: CurrentUser) -> dict:
     """Predict expected m/z values for common ESI adducts from SMILES."""
     from rdkit.Chem import Descriptors
 
@@ -270,7 +272,7 @@ async def predict_adducts(data: dict) -> dict:
 
 
 @router.post("/dwell-volume/calculate")
-async def calculate_dwell_volume(data: dict) -> dict:
+async def calculate_dwell_volume(data: dict, current: CurrentUser) -> dict:
     """F13: Calculate dwell volume from a measured midpoint time.
 
     Dwell volume = (midpoint_time - gradient_time/2) * flow_rate
@@ -308,7 +310,7 @@ async def calculate_dwell_volume(data: dict) -> dict:
 
 
 @router.post("/prediction-equation/build", response_model=PredictionEquationOut)
-async def build_prediction_equation(data: PredictionEquationRequest) -> PredictionEquationOut:
+async def build_prediction_equation(data: PredictionEquationRequest, current: CurrentUser) -> PredictionEquationOut:
     """Build a retention prediction equation from >=5 known compounds."""
     from app.core.ml.prediction_equation import (
         KnownCompoundRT,
@@ -345,7 +347,7 @@ async def build_prediction_equation(data: PredictionEquationRequest) -> Predicti
 
 
 @router.post("/prediction-equation/predict", response_model=PredictRTOut)
-async def predict_rt(data: PredictRTRequest) -> PredictRTOut:
+async def predict_rt(data: PredictRTRequest, current: CurrentUser) -> PredictRTOut:
     """Predict retention time for a new compound using a fitted equation."""
     from app.core.ml.prediction_equation import PredictionEquation
     from app.core.ml.prediction_equation import predict_rt as _predict
@@ -374,7 +376,7 @@ async def predict_rt(data: PredictRTRequest) -> PredictRTOut:
 
 
 @router.post("/model-selection", response_model=ModelSelectionOut)
-async def model_selection(data: ModelSelectionRequest) -> ModelSelectionOut:
+async def model_selection(data: ModelSelectionRequest, current: CurrentUser) -> ModelSelectionOut:
     """Fit linear/quadratic/log-log models and suggest the best one."""
     from app.core.ml.model_selection import (
         CalibrationPoint,
@@ -427,7 +429,7 @@ async def model_selection(data: ModelSelectionRequest) -> ModelSelectionOut:
 
 
 @router.post("/ph-distribution", response_model=PhDistributionOut)
-async def ph_distribution(data: PhDistributionRequest) -> PhDistributionOut:
+async def ph_distribution(data: PhDistributionRequest, current: CurrentUser) -> PhDistributionOut:
     """Compute ionic species distribution across pH range for a compound."""
     from app.core.chem.ph_selector import ph_distribution as _ph_dist
 
@@ -440,7 +442,7 @@ async def ph_distribution(data: PhDistributionRequest) -> PhDistributionOut:
 
 
 @router.post("/ph-suitability", response_model=PhSuitabilityOut)
-async def ph_suitability(data: PhSuitabilityRequest) -> PhSuitabilityOut:
+async def ph_suitability(data: PhSuitabilityRequest, current: CurrentUser) -> PhSuitabilityOut:
     """Compute pH suitability map for a mixture of compounds."""
     from app.core.chem.ph_selector import ph_suitability as _ph_suit
 
@@ -459,7 +461,7 @@ async def ph_suitability(data: PhSuitabilityRequest) -> PhSuitabilityOut:
 
 
 @router.post("/resolution-map/1d", response_model=ResolutionMap1DOut)
-async def resolution_map_1d(data: ResolutionMap1DRequest) -> ResolutionMap1DOut:
+async def resolution_map_1d(data: ResolutionMap1DRequest, current: CurrentUser) -> ResolutionMap1DOut:
     """Compute 1D resolution map across a variable range."""
     from app.core.lss.resolution_map import resolution_map_1d as _rmap_1d
 
@@ -493,7 +495,7 @@ async def resolution_map_1d(data: ResolutionMap1DRequest) -> ResolutionMap1DOut:
 
 
 @router.post("/resolution-map/2d", response_model=ResolutionMap2DOut)
-async def resolution_map_2d(data: ResolutionMap2DRequest) -> ResolutionMap2DOut:
+async def resolution_map_2d(data: ResolutionMap2DRequest, current: CurrentUser) -> ResolutionMap2DOut:
     """Compute 2D resolution map (heatmap)."""
     from app.core.lss.resolution_map import resolution_map_2d as _rmap_2d
 
@@ -533,7 +535,7 @@ async def resolution_map_2d(data: ResolutionMap2DRequest) -> ResolutionMap2DOut:
 
 
 @router.post("/ternary-optimize", response_model=TernaryOptimizeOut)
-async def ternary_optimize(data: TernaryOptimizeRequest) -> TernaryOptimizeOut:
+async def ternary_optimize(data: TernaryOptimizeRequest, current: CurrentUser) -> TernaryOptimizeOut:
     """Optimize ternary solvent ratios."""
     from app.core.lss.ternary_optimization import ternary_optimize as _ternary
 
@@ -561,7 +563,7 @@ async def ternary_optimize(data: TernaryOptimizeRequest) -> TernaryOptimizeOut:
 
 
 @router.post("/method-transfer", response_model=MethodTransferOut)
-async def method_transfer(data: MethodTransferRequest) -> MethodTransferOut:
+async def method_transfer(data: MethodTransferRequest, current: CurrentUser) -> MethodTransferOut:
     """Transfer a method from one column to another."""
     from app.core.lss.method_transfer import ColumnSpec, SourceMethod, transfer_method
 
@@ -596,7 +598,7 @@ async def method_transfer(data: MethodTransferRequest) -> MethodTransferOut:
 
 
 @router.post("/van-deemter", response_model=VanDeemterOut)
-async def van_deemter_map(data: VanDeemterRequest) -> VanDeemterOut:
+async def van_deemter_map(data: VanDeemterRequest, db: DBSession, current: CurrentUser) -> VanDeemterOut:
     """Van Deemter efficiency analysis and optimal flow-rate selection.
 
     Computes the plate-height curve H(F), the efficiency optimum
@@ -660,15 +662,106 @@ async def van_deemter_map(data: VanDeemterRequest) -> VanDeemterOut:
     except ValueError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
 
-    # Diffusion coefficient
-    if data.dm_m2_s:
-        dm = data.dm_m2_s
-        notes.append("Dm supplied directly — Wilke-Chang estimate not used")
-    else:
-        dm = vd.wilke_chang_dm_m2_s(
-            data.analyte_mw, data.solvent_b, data.fraction_b,
-            data.temperature_c, eta_cp,
+    # Diffusion coefficient — resolve the analyte-size mode first. MW only
+    # affects the optimal flow (Dm ~ MW^-0.6); h_min and N are independent.
+    compound_mws: list[float] = []
+    compound_names: list[str] = []
+    if data.analyte_mode == "compound" and data.compound_ids:
+        from sqlalchemy import select as _select
+
+        from app.models.compound import Compound
+
+        result = await db.execute(
+            _select(Compound).where(Compound.id.in_(data.compound_ids))
         )
+        found = {c.id: c for c in result.scalars()}
+        for cid in data.compound_ids:
+            cpd = found.get(cid)
+            if cpd is None or (
+                cpd.owner_id != current.id and not cpd.is_shared and not current.is_admin
+            ):
+                raise HTTPException(
+                    status.HTTP_404_NOT_FOUND, f"Compound {cid} not found"
+                )
+            if cpd.mw is None:
+                notes.append(f"Compound '{cpd.name}' has no MW — skipped")
+                continue
+            compound_mws.append(cpd.mw)
+            compound_names.append(cpd.name)
+        if not compound_mws:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "None of the selected compounds have a molecular weight",
+            )
+
+    mws: list[float]
+    mw_source: str
+    if data.dm_m2_s:
+        mws, mw_source = [], "dm_override"
+        notes.append("Dm supplied directly — analyte MW inputs not used")
+    elif data.analyte_mode == "compound" and compound_mws:
+        mws, mw_source = compound_mws, "compound"
+    elif data.analyte_mode == "mz" and data.mz:
+        try:
+            mws = [vd.mz_to_neutral_mw(data.mz, data.charge)]
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        mw_source = "mz"
+        notes.append(
+            f"Neutral mass {mws[0]:.1f} Da from m/z {data.mz} "
+            f"(charge {data.charge:+d}, proton adducts assumed)"
+        )
+    elif data.analyte_mode == "mw_range" and data.mw_min and data.mw_max:
+        lo, hi = min(data.mw_min, data.mw_max), max(data.mw_min, data.mw_max)
+        mws, mw_source = [lo, hi], "mw_range"
+    elif data.analyte_mw:
+        mws, mw_source = [data.analyte_mw], "mw"
+    else:
+        mws = [vd.DEFAULT_ANALYTE_MW]
+        mw_source = "typical"
+        notes.append(
+            f"No analyte size given — using typical small-molecule MW "
+            f"{vd.DEFAULT_ANALYTE_MW:.0f} Da. Optimal flow scales ~MW^-0.6, "
+            f"so this is a weak assumption."
+        )
+
+    if mws:
+        dm_per_mw = {
+            mw: vd.wilke_chang_dm_m2_s(
+                mw, data.solvent_b, data.fraction_b, data.temperature_c, eta_cp
+            )
+            for mw in set(mws)
+        }
+        # Representative MW = geometric mean of the extremes (log-space
+        # centre, matching the MW^-0.6 dependence of Dm).
+        mw_rep = math.sqrt(min(mws) * max(mws))
+        dm = dm_per_mw[min(mws, key=lambda m: abs(m - mw_rep))]
+        dm_extremes = (dm_per_mw[min(mws)], dm_per_mw[max(mws)])
+        analytes = {
+            "source": mw_source,
+            "mws": sorted(set(round(m, 1) for m in mws)),
+            "mw_used": round(mw_rep, 1),
+            "mw_min": round(min(mws), 1),
+            "mw_max": round(max(mws), 1),
+            "compound_names": compound_names or None,
+        }
+        if len(set(mws)) > 1:
+            notes.append(
+                f"Analyte MW range {min(mws):.0f}–{max(mws):.0f} Da — curve "
+                f"band and flow window show the spread; the headline optimum "
+                f"uses the geometric-mean MW {mw_rep:.0f} Da"
+            )
+    else:
+        dm = data.dm_m2_s
+        dm_extremes = None
+        analytes = {
+            "source": mw_source,
+            "mws": [],
+            "mw_used": None,
+            "mw_min": None,
+            "mw_max": None,
+            "compound_names": None,
+        }
 
     a, b, c = col.coeffs()
 
@@ -699,7 +792,24 @@ async def van_deemter_map(data: VanDeemterRequest) -> VanDeemterOut:
     if f_hi <= f_lo:
         f_hi = f_lo * 4.0
 
-    curve = vd.van_deemter_curve(col, dm, eta_cp, f_lo, f_hi, data.points)
+    band = dm_extremes if (dm_extremes and dm_extremes[0] != dm_extremes[1]) else None
+    curve = vd.van_deemter_curve(col, dm, eta_cp, f_lo, f_hi, data.points, band_dm=band)
+
+    # Optimal-flow window across the analyte MW extremes (only meaningful
+    # when more than one MW was resolved).
+    flow_window = None
+    if band is not None:
+        a_, b_, c_ = col.coeffs()
+        u_lo = vd.optimal_velocity_mm_s(dp_um, min(band), a_, b_, c_)
+        u_hi = vd.optimal_velocity_mm_s(dp_um, max(band), a_, b_, c_)
+        flow_window = {
+            "low_flow_ml_min": round(
+                vd.linear_velocity_to_flow(u_lo, id_mm, eps_t), 4
+            ),
+            "high_flow_ml_min": round(
+                vd.linear_velocity_to_flow(u_hi, id_mm, eps_t), 4
+            ),
+        }
 
     # Diameter map
     ids = tuple(data.diameter_ids_mm) if data.diameter_ids_mm else vd.STANDARD_IDS_MM
@@ -735,6 +845,8 @@ async def van_deemter_map(data: VanDeemterRequest) -> VanDeemterOut:
             "fraction_b": data.fraction_b,
             "temperature_c": data.temperature_c,
         },
+        analytes=analytes,
+        flow_window=flow_window,
         dm_m2_s=dm,
         viscosity_cp=eta_cp,
         curve=[p.to_dict() for p in curve],
@@ -750,7 +862,7 @@ async def van_deemter_map(data: VanDeemterRequest) -> VanDeemterOut:
 
 
 @router.post("/buffer/calculate", response_model=BufferCalcOut)
-async def calculate_buffer_ph(data: BufferCalcRequest) -> BufferCalcOut:
+async def calculate_buffer_ph(data: BufferCalcRequest, current: CurrentUser) -> BufferCalcOut:
     """Calculate pH of a buffer solution."""
     from app.core.chem.buffer_calculator import calculate_buffer_ph as _calc
 
@@ -759,7 +871,7 @@ async def calculate_buffer_ph(data: BufferCalcRequest) -> BufferCalcOut:
 
 
 @router.post("/mobile-phase/check")
-async def check_mobile_phase(data: MobilePhaseCheckRequest) -> dict:
+async def check_mobile_phase(data: MobilePhaseCheckRequest, current: CurrentUser) -> dict:
     """Check mobile phase compatibility."""
     from app.core.chem.buffer_calculator import MobilePhase, check_compatibility
 
@@ -775,7 +887,7 @@ async def check_mobile_phase(data: MobilePhaseCheckRequest) -> dict:
 
 
 @router.get("/buffers/list")
-async def list_buffers() -> dict:
+async def list_buffers(current: CurrentUser) -> dict:
     """List all available buffers with their properties."""
     from app.core.chem.buffer_calculator import list_buffers as _list
     return _list()
@@ -785,7 +897,7 @@ async def list_buffers() -> dict:
 
 
 @router.post("/peak-tracking")
-async def peak_tracking(data: PeakTrackingRequest) -> dict:
+async def peak_tracking(data: PeakTrackingRequest, current: CurrentUser) -> dict:
     """Track/match peaks across multiple chromatograms."""
     from app.core.chem.peak_tracking import TrackPeak, track_peaks
 
@@ -817,7 +929,7 @@ async def peak_tracking(data: PeakTrackingRequest) -> dict:
 
 
 @router.post("/robustness")
-async def method_robustness(data: dict) -> dict:
+async def method_robustness(data: dict, current: CurrentUser) -> dict:
     """Analyze method robustness by perturbing pH, temperature, and flow."""
     smiles_list = data.get("smiles_list", [])
     gradient_table = data.get("gradient_table", [])
@@ -864,14 +976,14 @@ async def list_methods(
 # --- Method Templates ---
 
 @router.get("/templates/list")
-async def list_method_templates(category: str | None = Query(None)) -> list[dict]:
+async def list_method_templates(current: CurrentUser, category: str | None = Query(None)) -> list[dict]:
     """List available method templates."""
     templates = list_templates(category)
     return [template_to_dict(t) for t in templates]
 
 
 @router.get("/templates/categories")
-async def list_template_categories() -> list[str]:
+async def list_template_categories(current: CurrentUser) -> list[str]:
     """List template categories."""
     return get_categories()
 
@@ -1145,6 +1257,9 @@ async def fork_method(
     method = await method_service.get_method(db, method_id)
     if method is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Method not found")
+    if (method.owner_id is not None and method.owner_id != current.id
+            and not method.is_shared):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed")
 
     data = MethodCreate(
         name=f"{method.name or 'Method'} (copy)",

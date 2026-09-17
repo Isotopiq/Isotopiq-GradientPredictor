@@ -16,8 +16,9 @@ services:
       retries: 5
     restart: unless-stopped
     # Unique host port 18732 -> container 5432 (for external DB tools like DBeaver/pgAdmin)
+    # Bound to localhost only — do not expose Postgres on all interfaces.
     ports:
-      - "18732:5432"
+      - "127.0.0.1:18732:5432"
 
   backend:
     build: ./backend

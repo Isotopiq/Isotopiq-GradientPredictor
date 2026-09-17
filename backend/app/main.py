@@ -3,23 +3,27 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
+from slowapi.extension import _rate_limit_exceeded_handler
+from slowapi.middleware import SlowAPIMiddleware
 
-from app.api.routes import auth as auth_routes
 from app.api.routes import admin as admin_routes
+from app.api.routes import auth as auth_routes
 from app.api.routes import columns as column_routes
-from app.api.routes import compounds as compound_routes
 from app.api.routes import compound_lists as compound_list_routes
+from app.api.routes import compounds as compound_routes
 from app.api.routes import export as export_routes
 from app.api.routes import health as health_routes
-from app.api.routes import methods as method_routes
 from app.api.routes import method_import as method_import_routes
+from app.api.routes import methods as method_routes
 from app.api.routes import ml as ml_routes
 from app.api.routes import notifications as notification_routes
 from app.api.routes import predictions as prediction_routes
 from app.api.routes import runs as run_routes
 from app.config import settings
+from app.ratelimit import limiter
 
 
 @asynccontextmanager
@@ -27,9 +31,10 @@ async def lifespan(app: FastAPI):
     # Startup: seed default admin (migrations already run in CMD/Dockerfile)
     import logging
 
-    from app.database import engine as async_engine
-    from app.core.seed import seed_admin
     from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.core.seed import seed_admin
+    from app.database import engine as async_engine
 
     logger = logging.getLogger("app.startup")
     logging.basicConfig(level=logging.INFO)
@@ -55,6 +60,18 @@ def create_app() -> FastAPI:
         description="Predict LC-MS method parameters from compound structure.",
         lifespan=lifespan,
     )
+
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_middleware(SlowAPIMiddleware)
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next) -> Response:
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        return response
 
     app.add_middleware(
         CORSMiddleware,

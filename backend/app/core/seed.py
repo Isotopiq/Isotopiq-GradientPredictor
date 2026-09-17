@@ -31,6 +31,12 @@ async def seed_admin(db: AsyncSession) -> None:
     email = settings.admin_email
     password = settings.admin_password
 
+    if password == "changeme-admin-2024!":
+        logger.warning(
+            "ADMIN_PASSWORD is unset/default — the seeded admin uses a "
+            "publicly known password. Set ADMIN_PASSWORD in the environment."
+        )
+
     # Look up by email first
     result = await db.execute(select(User).where(User.email == email))
     existing = result.scalar_one_or_none()

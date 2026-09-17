@@ -28,9 +28,16 @@ async def get_current_user(
     if not user_id_str:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token payload")
 
-    user = await db.get(User, uuid.UUID(user_id_str))
+    try:
+        user_id = uuid.UUID(user_id_str)
+    except (ValueError, AttributeError) as exc:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token payload") from exc
+
+    user = await db.get(User, user_id)
     if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
+    if not user.is_active:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Account deactivated")
     return user
 
 

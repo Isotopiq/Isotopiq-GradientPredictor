@@ -513,12 +513,25 @@ class VanDeemterRequest(BaseModel):
     particle_type: str | None = None          # fully_porous|core_shell|hybrid|graphitic
     porosity_total: float | None = Field(None, gt=0, le=1)
     porosity_interstitial: float = Field(0.40, gt=0, le=1)
-    # Mobile phase / analyte
+    # Mobile phase
     solvent_b: str = "acetonitrile"           # acetonitrile|methanol
     fraction_b: float = Field(0.5, ge=0.0, le=1.0)
     temperature_c: float = Field(40.0, ge=-10.0, le=120.0)
-    analyte_mw: float = Field(300.0, gt=0)
-    dm_m2_s: float | None = Field(None, gt=0)  # optional Dm override
+    # Analyte size — MW only affects the optimal *flow* via Dm (MW^-0.6);
+    # h_min / N are MW-independent. Select a mode:
+    #   "typical"  -> 300 Da small-molecule default (no input needed)
+    #   "compound" -> resolve MWs from compound_ids in the library
+    #   "mz"       -> neutral mass from m/z + charge (proton adducts)
+    #   "mw"       -> explicit analyte_mw
+    #   "mw_range" -> explicit mw_min..mw_max span (band + flow window)
+    analyte_mode: str = "typical"
+    analyte_mw: float | None = Field(None, gt=0)
+    mw_min: float | None = Field(None, gt=0)
+    mw_max: float | None = Field(None, gt=0)
+    mz: float | None = Field(None, gt=0)
+    charge: int = Field(1, ge=-20, le=20)
+    compound_ids: list[uuid.UUID] | None = Field(None, max_length=20)
+    dm_m2_s: float | None = Field(None, gt=0)  # optional Dm override (wins)
     # Curve / assessment
     current_flow_ml_min: float | None = Field(None, gt=0)
     flow_min_ml_min: float | None = Field(None, gt=0)
@@ -535,6 +548,8 @@ class VanDeemterOut(BaseModel):
     particle_type: str
     coefficients: dict[str, float]
     solvent: dict[str, Any]
+    analytes: dict[str, Any]
+    flow_window: dict[str, Any] | None
     dm_m2_s: float
     viscosity_cp: float
     curve: list[dict[str, float]]

@@ -11,7 +11,8 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.chem.meth_parser import MethParseError, ParsedMethod, parse_meth_file
@@ -20,12 +21,16 @@ from app.core.chem.mzxml_parser import (
     extract_compound_peaks,
     parse_mzxml,
 )
+from app.core.file_validation import (
+    MAX_CHROMATOGRAM_BYTES,
+    MAX_METH_BYTES,
+    MAX_MZXML_BYTES,
+    read_upload_limited,
+)
 from app.core.ml.registry import get_artifact, list_artifacts
 from app.core.ml.trainer import TrainingSample, train_model
 from app.deps import CurrentUser, DBSession
 from app.services import compound_service
-from app.services.method_service import compute_method_signature
-from pydantic import BaseModel
 
 router = APIRouter(prefix="/method-import", tags=["method-import"])
 
@@ -94,7 +99,7 @@ async def parse_meth(
     file: UploadFile = File(...),
 ) -> ParsedMethodOut:
     """Parse a Thermo Chromeleon .meth file and extract chromatography conditions."""
-    content = await file.read()
+    content = await read_upload_limited(file, MAX_METH_BYTES)
     if not content:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Empty file")
     try:
@@ -115,16 +120,14 @@ async def parse_chromatogram_csv(
     """Parse a CSV/TXT chromatogram file (Agilent, Chromeleon, Empower, or generic)."""
     from app.core.chem.chromatogram_import import (
         ChromatogramImportError,
+    )
+    from app.core.chem.chromatogram_import import (
         parse_chromatogram_csv as _parse,
     )
 
-    content_bytes = await file.read()
+    content_bytes = await read_upload_limited(file, MAX_CHROMATOGRAM_BYTES)
     if not content_bytes:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Empty file")
-
-    # Limit file size
-    if len(content_bytes) > 10 * 1024 * 1024:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File too large (max 10 MB)")
 
     try:
         content = content_bytes.decode("utf-8", errors="replace")
@@ -145,7 +148,7 @@ async def parse_mzxml_route(
     file: UploadFile = File(...),
 ) -> MzXmlSummaryOut:
     """Parse an mzXML file and return a summary (no peak extraction)."""
-    content = await file.read()
+    content = await read_upload_limited(file, MAX_MZXML_BYTES)
     if not content:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Empty file")
     try:
@@ -170,7 +173,8 @@ async def list_models(
     column_type: str | None = None,
 ) -> list[ModelSummary]:
     """List existing trained models for incremental training selection."""
-    artifacts = await list_artifacts(db, column_type=column_type, limit=100)
+    owner_id = None if current.is_admin else current.id
+    artifacts = await list_artifacts(db, column_type=column_type, limit=100, owner_id=owner_id)
     return [
         ModelSummary(
             id=str(a.id),
@@ -290,7 +294,7 @@ async def extract_peaks(
     summaries: list[MzXmlSummaryOut] = []
 
     for mzxml_file in mzxml_files:
-        content = await mzxml_file.read()
+        content = await read_upload_limited(mzxml_file, MAX_MZXML_BYTES)
         if not content:
             continue
         try:
@@ -317,7 +321,7 @@ async def extract_peaks(
     # Optionally parse .meth file
     method_conditions = None
     if meth_file:
-        meth_content = await meth_file.read()
+        meth_content = await read_upload_limited(meth_file, MAX_METH_BYTES)
         if meth_content:
             try:
                 parsed = parse_meth_file(meth_content)
@@ -376,7 +380,7 @@ async def train_from_peaks(
     # Parse all mzXML files and combine scans
     all_scans: list = []
     for mzxml_file in mzxml_files:
-        content = await mzxml_file.read()
+        content = await read_upload_limited(mzxml_file, MAX_MZXML_BYTES)
         if not content:
             continue
         try:
@@ -394,7 +398,7 @@ async def train_from_peaks(
     # Parse .meth file for method conditions
     parsed_method: ParsedMethod | None = None
     if meth_file:
-        meth_content = await meth_file.read()
+        meth_content = await read_upload_limited(meth_file, MAX_METH_BYTES)
         if meth_content:
             try:
                 parsed_method = parse_meth_file(meth_content)
@@ -459,7 +463,9 @@ async def train_from_peaks(
                 status.HTTP_400_BAD_REQUEST, f"Invalid artifact ID: {exc}"
             ) from exc
 
-        existing_artifact = await get_artifact(db, artifact_id)
+        existing_artifact = await get_artifact(
+            db, artifact_id, None if current.is_admin else current.id
+        )
         if existing_artifact is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Existing model not found")
 

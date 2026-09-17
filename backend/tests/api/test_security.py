@@ -1,0 +1,407 @@
+"""Security regression tests: auth coverage, owner scoping, token lifecycle."""
+from __future__ import annotations
+
+import pytest
+from sqlalchemy import update
+
+from tests.api.conftest import register_and_login
+from tests.fixtures import get_fixture_csv_bytes
+
+# ---------------------------------------------------------------------------
+# Unauthenticated requests must be rejected on compute/lookup endpoints
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+class TestAuthRequired:
+    @pytest.mark.parametrize("path", [
+        "/api/v1/methods/van-deemter",
+        "/api/v1/methods/suggest",
+        "/api/v1/methods/gradient/simulate",
+        "/api/v1/methods/chromatogram",
+        "/api/v1/methods/optimize-gradient",
+        "/api/v1/methods/resolution-map/1d",
+        "/api/v1/methods/resolution-map/2d",
+        "/api/v1/methods/ternary-optimize",
+        "/api/v1/methods/method-transfer",
+    ])
+    async def test_post_compute_endpoints_require_auth(self, client, path):
+        resp = await client.post(path, json={})
+        assert resp.status_code == 401
+
+    @pytest.mark.parametrize("path", [
+        "/api/v1/methods/retention-models",
+        "/api/v1/methods/buffers/list",
+        "/api/v1/compounds/pubchem/lookup?name=aspirin",
+        "/api/v1/compounds/search/multi?name=test",
+        "/api/v1/compounds/depiction?smiles=CCO",
+        "/api/v1/compounds/pka-plot?smiles=CCO",
+    ])
+    async def test_get_lookup_endpoints_require_auth(self, client, path):
+        resp = await client.get(path)
+        assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Refresh-token lifecycle: rotation, revocation, legacy rejection
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+class TestRefreshTokenLifecycle:
+    async def test_refresh_rotates_and_old_token_fails(self, client):
+        resp = await client.post(
+            "/api/v1/auth/register",
+            json={"email": "rot@test.com", "password": "testpass123"},
+        )
+        assert resp.status_code == 201
+        refresh_token = resp.json()["refresh_token"]
+
+        # First refresh succeeds and rotates the session
+        r1 = await client.post(
+            "/api/v1/auth/refresh", json={"refresh_token": refresh_token}
+        )
+        assert r1.status_code == 200
+        new_refresh = r1.json()["refresh_token"]
+        assert new_refresh != refresh_token
+
+        # Reuse of the rotated (now revoked) token must fail
+        r2 = await client.post(
+            "/api/v1/auth/refresh", json={"refresh_token": refresh_token}
+        )
+        assert r2.status_code == 401
+
+        # The new token works
+        r3 = await client.post(
+            "/api/v1/auth/refresh", json={"refresh_token": new_refresh}
+        )
+        assert r3.status_code == 200
+
+    async def test_logout_revokes_refresh(self, client):
+        resp = await client.post(
+            "/api/v1/auth/register",
+            json={"email": "logout@test.com", "password": "testpass123"},
+        )
+        refresh_token = resp.json()["refresh_token"]
+
+        out = await client.post(
+            "/api/v1/auth/logout", json={"refresh_token": refresh_token}
+        )
+        assert out.status_code == 204
+
+        r = await client.post(
+            "/api/v1/auth/refresh", json={"refresh_token": refresh_token}
+        )
+        assert r.status_code == 401
+
+    async def test_logout_is_idempotent_for_bad_token(self, client):
+        r = await client.post(
+            "/api/v1/auth/logout", json={"refresh_token": "garbage"}
+        )
+        assert r.status_code == 204
+
+    async def test_legacy_refresh_token_without_jti_rejected(self, client):
+        """Refresh tokens minted before session tracking carry no jti."""
+        resp = await client.post(
+            "/api/v1/auth/register",
+            json={"email": "legacy@test.com", "password": "testpass123"},
+        )
+        user_id = resp.json()["user"]["id"]
+
+        from app.auth.jwt import create_refresh_token
+        legacy = create_refresh_token(str(user_id))  # no jti
+        r = await client.post(
+            "/api/v1/auth/refresh", json={"refresh_token": legacy}
+        )
+        assert r.status_code == 401
+
+    async def test_malformed_refresh_payload_rejected(self, client):
+        r = await client.post(
+            "/api/v1/auth/refresh", json={"refresh_token": "not-a-jwt"}
+        )
+        assert r.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Deactivated users lose access (access + refresh)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+class TestDeactivatedUser:
+    async def test_inactive_user_blocked(self, client, db_engine):
+        tokens_resp = await client.post(
+            "/api/v1/auth/register",
+            json={"email": "gone@test.com", "password": "testpass123"},
+        )
+        data = tokens_resp.json()
+        access = data["access_token"]
+        refresh_token = data["refresh_token"]
+        user_id = data["user"]["id"]
+
+        # Works while active
+        ok = await client.get(
+            "/api/v1/auth/me", headers={"Authorization": f"Bearer {access}"}
+        )
+        assert ok.status_code == 200
+
+        # Deactivate directly in the DB
+        import uuid as _uuid
+
+        from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+        from app.models.user import User
+        sm = async_sessionmaker(bind=db_engine, class_=AsyncSession)
+        async with sm() as s:
+            await s.execute(
+                update(User)
+                .where(User.id == _uuid.UUID(user_id))
+                .values(is_active=False)
+            )
+            await s.commit()
+
+        # Access token now rejected (403 — authenticated but deactivated)
+        r1 = await client.get(
+            "/api/v1/auth/me", headers={"Authorization": f"Bearer {access}"}
+        )
+        assert r1.status_code == 403
+
+        # Refresh also rejected
+        r2 = await client.post(
+            "/api/v1/auth/refresh", json={"refresh_token": refresh_token}
+        )
+        assert r2.status_code == 401
+
+        # Login rejected
+        r3 = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "gone@test.com", "password": "testpass123"},
+        )
+        assert r3.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Last-admin protection
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+class TestLastAdmin:
+    async def test_cannot_demote_last_admin(self, client, db_engine):
+        resp = await client.post(
+            "/api/v1/auth/register",
+            json={"email": "admin@test.com", "password": "testpass123"},
+        )
+        data = resp.json()
+        user_id = data["user"]["id"]
+        headers = {"Authorization": f"Bearer {data['access_token']}"}
+
+        # Promote to admin directly in DB
+        import uuid as _uuid
+
+        from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+        from app.models.user import User
+        sm = async_sessionmaker(bind=db_engine, class_=AsyncSession)
+        async with sm() as s:
+            await s.execute(
+                update(User)
+                .where(User.id == _uuid.UUID(user_id))
+                .values(is_admin=True)
+            )
+            await s.commit()
+
+        # Demoting the only admin must fail
+        r = await client.put(
+            f"/api/v1/admin/users/{user_id}",
+            json={"is_admin": False},
+            headers=headers,
+        )
+        assert r.status_code == 400
+
+    async def test_non_admin_cannot_touch_admin_routes(self, client):
+        headers = await register_and_login(client, "plain@test.com")
+        r = await client.get("/api/v1/admin/users", headers=headers)
+        assert r.status_code in (401, 403)
+
+
+# ---------------------------------------------------------------------------
+# Cross-user scoping: models must not be visible to other users
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+class TestOwnerScoping:
+    async def _train_model(self, client, headers) -> str:
+        resp = await client.post(
+            "/api/v1/ml/train/csv",
+            params={"column_type": "C18", "model_type": "sklearn"},
+            files={"file": ("compounds.csv", get_fixture_csv_bytes(), "text/csv")},
+            headers=headers,
+        )
+        assert resp.status_code == 201, resp.text
+        return resp.json()["artifact_id"]
+
+    async def test_cross_user_model_get_and_delete(self, client):
+        headers_a = await register_and_login(client, "owner@test.com")
+        artifact_id = await self._train_model(client, headers_a)
+
+        headers_b = await register_and_login(client, "other@test.com")
+
+        # Other user's model is invisible in their list
+        listed = await client.get("/api/v1/ml/models", headers=headers_b)
+        assert listed.status_code == 200
+        assert all(m["id"] != artifact_id for m in listed.json())
+
+        # Direct access denied (404 — no enumeration)
+        got = await client.get(
+            f"/api/v1/ml/models/{artifact_id}", headers=headers_b
+        )
+        assert got.status_code == 404
+
+        # Direct delete denied
+        deleted = await client.delete(
+            f"/api/v1/ml/models/{artifact_id}", headers=headers_b
+        )
+        assert deleted.status_code == 404
+
+        # Owner still sees it
+        still = await client.get(
+            f"/api/v1/ml/models/{artifact_id}", headers=headers_a
+        )
+        assert still.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# SVG upload rejection (stored-XSS defence)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+class TestUploadValidation:
+    async def test_svg_logo_rejected(self, client, db_engine):
+        resp = await client.post(
+            "/api/v1/auth/register",
+            json={"email": "svgadmin@test.com", "password": "testpass123"},
+        )
+        data = resp.json()
+        user_id = data["user"]["id"]
+        headers = {"Authorization": f"Bearer {data['access_token']}"}
+
+        import uuid as _uuid
+
+        from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+        from app.models.user import User
+        sm = async_sessionmaker(bind=db_engine, class_=AsyncSession)
+        async with sm() as s:
+            await s.execute(
+                update(User)
+                .where(User.id == _uuid.UUID(user_id))
+                .values(is_admin=True)
+            )
+            await s.commit()
+
+        svg = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+        r = await client.post(
+            "/api/v1/admin/logo",
+            files={"file": ("logo.svg", svg, "image/svg+xml")},
+            headers=headers,
+        )
+        assert r.status_code == 400
+
+    async def test_spoofed_mime_rejected(self, client, db_engine):
+        """A non-image body with an image Content-Type must be rejected."""
+        resp = await client.post(
+            "/api/v1/auth/register",
+            json={"email": "spoof@test.com", "password": "testpass123"},
+        )
+        headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+        r = await client.post(
+            "/api/v1/auth/profile/picture",
+            files={"file": ("pic.png", b"not an image at all", "image/png")},
+            headers=headers,
+        )
+        assert r.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Van Deemter analyte-size modes
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+class TestVanDeemterAnalytes:
+    _BASE = {
+        "length_mm": 100.0,
+        "inner_diameter_mm": 2.1,
+        "particle_size_um": 1.7,
+        "particle_type": "fully_porous",
+        "solvent_b": "acetonitrile",
+        "fraction_b": 0.5,
+        "temperature_c": 40.0,
+        # High limit so small-MW optima aren't pressure-capped (which would
+        # legitimately raise H above the unconstrained h_min).
+        "max_pressure_bar": 2000.0,
+    }
+
+    async def test_typical_default_no_mw_needed(self, client):
+        headers = await register_and_login(client, "vd1@test.com")
+        r = await client.post(
+            "/api/v1/methods/van-deemter", json=self._BASE, headers=headers
+        )
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["analytes"]["source"] == "typical"
+        assert data["analytes"]["mw_used"] == pytest.approx(300.0)
+        assert data["flow_window"] is None
+        assert data["optimum_efficiency"]["flow_ml_min"] > 0
+
+    async def test_mz_mode_converts_to_mw(self, client):
+        headers = await register_and_login(client, "vd2@test.com")
+        r = await client.post(
+            "/api/v1/methods/van-deemter",
+            json={**self._BASE, "analyte_mode": "mz", "mz": 610.28, "charge": 2},
+            headers=headers,
+        )
+        assert r.status_code == 200, r.text
+        mw = r.json()["analytes"]["mw_used"]
+        assert mw == pytest.approx(2 * 610.28 - 2 * 1.007276, abs=0.1)
+
+    async def test_mw_range_gives_window_and_band(self, client):
+        headers = await register_and_login(client, "vd3@test.com")
+        r = await client.post(
+            "/api/v1/methods/van-deemter",
+            json={**self._BASE, "analyte_mode": "mw_range",
+                  "mw_min": 150.0, "mw_max": 800.0},
+            headers=headers,
+        )
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["flow_window"] is not None
+        fw = data["flow_window"]
+        assert fw["low_flow_ml_min"] < fw["high_flow_ml_min"]
+        # Curve points carry the band
+        assert all("h_low_um" in p and "h_high_um" in p for p in data["curve"])
+        assert all(p["h_low_um"] <= p["h_um"] <= p["h_high_um"] for p in data["curve"])
+
+    async def test_hmin_is_mw_independent(self, client):
+        """h_min / N at optimum must not depend on analyte MW."""
+        headers = await register_and_login(client, "vd4@test.com")
+        h_mins = []
+        for mw in (150.0, 300.0, 1200.0):
+            r = await client.post(
+                "/api/v1/methods/van-deemter",
+                json={**self._BASE, "analyte_mode": "mw", "analyte_mw": mw},
+                headers=headers,
+            )
+            assert r.status_code == 200
+            h_mins.append(r.json()["optimum_efficiency"]["h_um"])
+        assert h_mins[0] == pytest.approx(h_mins[1])
+        assert h_mins[1] == pytest.approx(h_mins[2])
+
+    async def test_dm_override_ignores_mw(self, client):
+        headers = await register_and_login(client, "vd5@test.com")
+        r = await client.post(
+            "/api/v1/methods/van-deemter",
+            json={**self._BASE, "analyte_mode": "mw",
+                  "analyte_mw": 5000.0, "dm_m2_s": 1e-9},
+            headers=headers,
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["analytes"]["source"] == "dm_override"
+        assert data["dm_m2_s"] == pytest.approx(1e-9)

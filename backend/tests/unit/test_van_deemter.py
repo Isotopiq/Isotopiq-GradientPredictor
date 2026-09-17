@@ -246,3 +246,60 @@ class TestAssessFlow:
         assert low["verdict"].startswith("below")
         high = vd.assess_flow(uhplc_col, dm, eta, opt.flow_ml_min * 3.0)
         assert high["verdict"].startswith("above")
+
+
+class TestMzToNeutralMw:
+    def test_positive_charge(self):
+        # [M+H]+ at m/z 301 -> MW ~ 299.993
+        mw = vd.mz_to_neutral_mw(301.0, 1)
+        assert mw == pytest.approx(301.0 - vd.PROTON_MASS_DA, rel=1e-9)
+
+    def test_negative_charge(self):
+        # [M-H]- at m/z 299 -> MW ~ 300.007
+        mw = vd.mz_to_neutral_mw(299.0, -1)
+        assert mw == pytest.approx(299.0 + vd.PROTON_MASS_DA, rel=1e-9)
+
+    def test_doubly_charged(self):
+        # [M+2H]2+ at m/z 305 -> MW = 2*305 - 2*1.0073
+        mw = vd.mz_to_neutral_mw(305.0, 2)
+        assert mw == pytest.approx(610.0 - 2 * vd.PROTON_MASS_DA, rel=1e-9)
+
+    def test_zero_charge_rejected(self):
+        with pytest.raises(ValueError):
+            vd.mz_to_neutral_mw(300.0, 0)
+
+
+class TestAnalyteBandCurve:
+    def test_band_encloses_mid_curve(self, uhplc_col):
+        # h(F) at the extreme Dm values must bracket the midpoint-MW curve
+        dm_lo = 0.5e-9   # high MW
+        dm_hi = 2.0e-9   # low MW
+        dm_mid = math.sqrt(dm_lo * dm_hi)
+        pts = vd.van_deemter_curve(
+            uhplc_col, dm_mid, 0.7, 0.05, 2.0, points=40,
+            band_dm=(dm_lo, dm_hi),
+        )
+        for p in pts:
+            assert p.h_low_um is not None and p.h_high_um is not None
+            assert p.h_low_um <= p.h_um <= p.h_high_um + 1e-9
+
+    def test_band_narrow_at_optimum(self, uhplc_col):
+        # Near nu_opt all Dm curves are close to h_min -> band is narrow
+        dm_lo, dm_hi = 0.9e-9, 1.1e-9
+        dm_mid = math.sqrt(dm_lo * dm_hi)
+        u_opt = vd.optimal_velocity_mm_s(
+            uhplc_col.particle_size_um, dm_mid,
+            *uhplc_col.coeffs(),
+        )
+        f_opt = vd.linear_velocity_to_flow(
+            u_opt, uhplc_col.inner_diameter_mm, uhplc_col.resolved_eps_t())
+        pts = vd.van_deemter_curve(
+            uhplc_col, dm_mid, 0.7, f_opt * 0.98, f_opt * 1.02, points=20,
+            band_dm=(dm_lo, dm_hi),
+        )
+        mid = pts[len(pts) // 2]
+        assert (mid.h_high_um - mid.h_low_um) < 0.05
+
+    def test_no_band_without_dm_pair(self, uhplc_col):
+        pts = vd.van_deemter_curve(uhplc_col, 1e-9, 0.7, 0.05, 2.0, points=10)
+        assert all(p.h_low_um is None and p.h_high_um is None for p in pts)

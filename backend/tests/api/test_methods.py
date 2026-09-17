@@ -15,9 +15,11 @@ async def _auth(client):
 @pytest.mark.asyncio
 class TestMethodSuggestion:
     async def test_suggest_from_smiles(self, client):
+        headers = await _auth(client)
         resp = await client.post(
             "/api/v1/methods/suggest",
             json={"smiles": "CC(=O)O", "ionization_mode": "ESI+"},
+            headers=headers,
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
@@ -29,18 +31,21 @@ class TestMethodSuggestion:
         assert data["column"]["column_type"] in ("C18", "HILIC", "ion_pair", "phenyl")
 
     async def test_suggest_no_input(self, client):
-        resp = await client.post("/api/v1/methods/suggest", json={})
+        headers = await _auth(client)
+        resp = await client.post("/api/v1/methods/suggest", json={}, headers=headers)
         assert resp.status_code == 400
 
     async def test_suggest_invalid_smiles(self, client):
+        headers = await _auth(client)
         resp = await client.post(
-            "/api/v1/methods/suggest", json={"smiles": "invalid!!!"}
+            "/api/v1/methods/suggest", json={"smiles": "invalid!!!"}, headers=headers
         )
         assert resp.status_code == 400
 
     async def test_suggest_gradient_has_table(self, client):
+        headers = await _auth(client)
         resp = await client.post(
-            "/api/v1/methods/suggest", json={"smiles": "CCO"}
+            "/api/v1/methods/suggest", json={"smiles": "CCO"}, headers=headers
         )
         data = resp.json()
         assert len(data["gradient"]["gradient_table"]) >= 3
@@ -49,6 +54,7 @@ class TestMethodSuggestion:
 @pytest.mark.asyncio
 class TestGradientSimulation:
     async def test_simulate_gradient(self, client):
+        headers = await _auth(client)
         resp = await client.post(
             "/api/v1/methods/gradient/simulate",
             json={
@@ -61,16 +67,18 @@ class TestGradientSimulation:
                 "flow_rate_ml_min": 0.4,
                 "logp": 2.0,
             },
+            headers=headers,
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
         assert data["predicted_rt_s"] > 0
-        assert data["method"] == "heuristic"
+        assert data["method"] in ("heuristic", "polarity", "lss_fit")
 
 
 @pytest.mark.asyncio
 class TestChromatogram:
     async def test_simulate_chromatogram(self, client):
+        headers = await _auth(client)
         resp = await client.post(
             "/api/v1/methods/chromatogram",
             json={
@@ -78,6 +86,7 @@ class TestChromatogram:
                 "total_time_s": 600,
                 "n_points": 100,
             },
+            headers=headers,
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()

@@ -19,6 +19,7 @@ os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 os.environ.setdefault("JWT_SECRET", "test-secret-not-for-production")
 os.environ.setdefault("CORS_ORIGINS", "http://localhost:18717")
 os.environ.setdefault("MODEL_STORAGE_PATH", "./test_models")
+os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 
 from app.models import Base  # noqa: E402
 

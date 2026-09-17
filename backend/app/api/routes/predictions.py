@@ -1,10 +1,7 @@
 """Prediction routes."""
 from __future__ import annotations
 
-import uuid
-
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, HTTPException, status
 
 from app.deps import CurrentUser, DBSession
 from app.schemas.prediction import PredictionOut, PredictionRequest
@@ -18,7 +15,9 @@ async def create_prediction(
     data: PredictionRequest, db: DBSession, current: CurrentUser
 ) -> PredictionOut:
     try:
-        prediction = await prediction_service.predict(db, data.compound_id, data.method_id)
+        prediction = await prediction_service.predict(
+            db, data.compound_id, data.method_id, current.id
+        )
     except ValueError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     return PredictionOut.model_validate(prediction)

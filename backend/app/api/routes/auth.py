@@ -3,19 +3,28 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.jwt import create_access_token, create_refresh_token, decode_refresh_token
+from app.auth.jwt import (
+    create_access_token,
+    create_refresh_token,
+    decode_refresh_token,
+    refresh_token_ttl,
+)
 from app.auth.security import hash_password, verify_password
 from app.config import settings
+from app.core.file_validation import NOSNIFF_HEADERS, read_upload_limited, sniff_image_mime
 from app.deps import CurrentUser, DBSession
 from app.models.password_reset_token import PasswordResetToken
+from app.models.refresh_session import RefreshSession
 from app.models.user import User
+from app.ratelimit import limiter
 from app.schemas.auth import (
     ForgotPasswordRequest,
     ProfileUpdate,
@@ -35,9 +44,13 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 MAX_PROFILE_PIC_SIZE = 10 * 1024 * 1024
 ALLOWED_PIC_TYPES = {"image/png", "image/jpeg", "image/webp"}
 
+# Fixed bcrypt hash used to equalize login timing for unknown emails
+_DUMMY_HASH = hash_password("dummy-password-for-timing")
+
 
 @router.post("/register", response_model=TokenPair, status_code=status.HTTP_201_CREATED)
-async def register(data: UserRegister, db: DBSession) -> TokenPair:
+@limiter.limit("5/minute")
+async def register(request: Request, data: UserRegister, db: DBSession) -> TokenPair:
     # Check if registration is enabled
     from app.models.app_settings import AppSettings
     settings_result = await db.execute(select(AppSettings).limit(1))
@@ -52,50 +65,95 @@ async def register(data: UserRegister, db: DBSession) -> TokenPair:
     db.add(user)
     await db.commit()
     await db.refresh(user)
-    return _make_token_pair(user)
+    return await _make_token_pair(db, user)
 
 
 @router.post("/login", response_model=TokenPair)
-async def login(data: UserLogin, db: DBSession) -> TokenPair:
+@limiter.limit("10/minute")
+async def login(request: Request, data: UserLogin, db: DBSession) -> TokenPair:
     result = await db.execute(select(User).where(User.email == data.email))
     user = result.scalar_one_or_none()
-    if user is None or not verify_password(data.password, user.password_hash):
+    # Always run bcrypt to avoid a timing oracle that reveals whether the
+    # email is registered (compare against a fixed dummy hash).
+    password_hash = user.password_hash if user is not None else _DUMMY_HASH
+    if user is None or not verify_password(data.password, password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
     if not user.is_active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Account deactivated")
     user.last_login_at = datetime.now(timezone.utc)
     await db.commit()
     await log_action(db, user, "login")
-    return _make_token_pair(user)
+    return await _make_token_pair(db, user)
 
 
 @router.post("/login-remember", response_model=TokenPair)
-async def login_with_remember(data: RememberMeLogin, db: DBSession) -> TokenPair:
+@limiter.limit("10/minute")
+async def login_with_remember(request: Request, data: RememberMeLogin, db: DBSession) -> TokenPair:
     """Login with optional remember-me for extended token TTL."""
     result = await db.execute(select(User).where(User.email == data.email))
     user = result.scalar_one_or_none()
-    if user is None or not verify_password(data.password, user.password_hash):
+    password_hash = user.password_hash if user is not None else _DUMMY_HASH
+    if user is None or not verify_password(data.password, password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
     if not user.is_active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Account deactivated")
     user.last_login_at = datetime.now(timezone.utc)
     await db.commit()
     await log_action(db, user, "login")
-    return _make_token_pair(user, remember_me=data.remember_me)
+    return await _make_token_pair(db, user, remember_me=data.remember_me)
 
 
 @router.post("/refresh", response_model=TokenPair)
-async def refresh(data: RefreshRequest, db: DBSession) -> TokenPair:
+@limiter.limit("30/minute")
+async def refresh(request: Request, data: RefreshRequest, db: DBSession) -> TokenPair:
     try:
         payload = decode_refresh_token(data.refresh_token)
     except ValueError:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid refresh token")
-    import uuid as _uuid
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid refresh token") from None
 
-    user = await db.get(User, _uuid.UUID(payload["sub"]))
-    if user is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
-    return _make_token_pair(user)
+    sub = payload.get("sub")
+    jti = payload.get("jti")
+    try:
+        user_id = uuid.UUID(sub) if sub else None
+    except (ValueError, AttributeError):
+        user_id = None
+    user = await db.get(User, user_id) if user_id else None
+    if user is None or not user.is_active or not jti:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid refresh token")
+
+    # The refresh token must map to a live server-side session — this is what
+    # makes logout, password-reset revocation and rotation work.
+    jti_hash = hashlib.sha256(str(jti).encode()).hexdigest()
+    result = await db.execute(
+        select(RefreshSession).where(RefreshSession.jti_hash == jti_hash)
+    )
+    session = result.scalar_one_or_none()
+    if session is None or not session.is_active or session.user_id != user.id:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid refresh token")
+
+    # Rotate: revoke the presented session, issue a fresh pair + session.
+    session.revoked_at = datetime.now(timezone.utc)
+    return await _make_token_pair(db, user)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(data: RefreshRequest, db: DBSession) -> None:
+    """Revoke the presented refresh token's session. Idempotent."""
+    try:
+        payload = decode_refresh_token(data.refresh_token)
+    except ValueError:
+        return None
+    jti = payload.get("jti")
+    if jti:
+        jti_hash = hashlib.sha256(str(jti).encode()).hexdigest()
+        result = await db.execute(
+            select(RefreshSession).where(RefreshSession.jti_hash == jti_hash)
+        )
+        session = result.scalar_one_or_none()
+        if session is not None and session.revoked_at is None:
+            session.revoked_at = datetime.now(timezone.utc)
+            await db.commit()
+    return None
 
 
 def _user_to_out(u: User) -> UserOut:
@@ -140,16 +198,16 @@ async def upload_profile_picture(
     file: UploadFile = File(...),
 ) -> UserOut:
     """Upload a profile picture."""
-    if file.content_type not in ALLOWED_PIC_TYPES:
+    contents = await read_upload_limited(file, MAX_PROFILE_PIC_SIZE)
+    # Validate actual content — the client Content-Type header is spoofable
+    real_mime = sniff_image_mime(contents)
+    if real_mime is None or real_mime not in ALLOWED_PIC_TYPES:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            f"Invalid image type. Allowed: {', '.join(ALLOWED_PIC_TYPES)}",
+            f"Invalid image content. Allowed: {', '.join(ALLOWED_PIC_TYPES)}",
         )
-    contents = await file.read()
-    if len(contents) > MAX_PROFILE_PIC_SIZE:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Image too large (max 10 MB)")
     current.profile_picture_bytes = contents
-    current.profile_picture_mime_type = file.content_type
+    current.profile_picture_mime_type = real_mime
     await db.commit()
     await db.refresh(current)
     await log_action(db, current, "profile_picture_upload")
@@ -169,16 +227,20 @@ async def delete_profile_picture(db: DBSession, current: CurrentUser) -> UserOut
 @router.get("/profile/picture/{user_id}")
 async def get_profile_picture(user_id: str, db: DBSession) -> Response:
     """Serve a user's profile picture. Public for display in UI."""
-    import uuid as _uuid
-    result = await db.execute(select(User).where(User.id == _uuid.UUID(user_id)))
+    result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
     user = result.scalar_one_or_none()
     if user is None or user.profile_picture_bytes is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No profile picture")
-    return Response(content=user.profile_picture_bytes, media_type=user.profile_picture_mime_type or "image/png")
+    return Response(
+        content=user.profile_picture_bytes,
+        media_type=user.profile_picture_mime_type or "image/png",
+        headers=NOSNIFF_HEADERS,
+    )
 
 
 @router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED)
-async def forgot_password(data: ForgotPasswordRequest, db: DBSession) -> dict:
+@limiter.limit("5/minute")
+async def forgot_password(request: Request, data: ForgotPasswordRequest, db: DBSession) -> dict:
     """Request a password reset email. Always returns 202 to avoid user enumeration."""
     result = await db.execute(select(User).where(User.email == data.email))
     user = result.scalar_one_or_none()
@@ -212,7 +274,8 @@ async def forgot_password(data: ForgotPasswordRequest, db: DBSession) -> dict:
 
 
 @router.post("/reset-password", status_code=status.HTTP_200_OK)
-async def reset_password(data: ResetPasswordRequest, db: DBSession) -> dict:
+@limiter.limit("5/minute")
+async def reset_password(request: Request, data: ResetPasswordRequest, db: DBSession) -> dict:
     """Reset password using a valid reset token."""
     token_hash = hashlib.sha256(data.token.encode()).hexdigest()
     result = await db.execute(
@@ -229,14 +292,36 @@ async def reset_password(data: ResetPasswordRequest, db: DBSession) -> dict:
 
     user.password_hash = hash_password(data.new_password)
     reset_token.used = True
+    # Revoke all outstanding refresh sessions for this user
+    await db.execute(
+        update(RefreshSession)
+        .where(RefreshSession.user_id == user.id, RefreshSession.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(timezone.utc))
+    )
     await db.commit()
 
     return {"message": "Password reset successfully. Please log in."}
 
 
-def _make_token_pair(user: User, remember_me: bool = False) -> TokenPair:
+async def _make_token_pair(
+    db: AsyncSession, user: User, remember_me: bool = False
+) -> TokenPair:
+    """Issue an access/refresh pair and persist the refresh session.
+
+    The refresh token's ``jti`` is stored (hashed) server-side so sessions can
+    be revoked on logout, password reset, or admin deactivation.
+    """
+    jti = str(uuid.uuid4())
+    db.add(
+        RefreshSession(
+            user_id=user.id,
+            jti_hash=hashlib.sha256(jti.encode()).hexdigest(),
+            expires_at=datetime.now(timezone.utc) + refresh_token_ttl(remember_me),
+        )
+    )
+    await db.commit()
     return TokenPair(
         access_token=create_access_token(str(user.id), remember_me=remember_me),
-        refresh_token=create_refresh_token(str(user.id), remember_me=remember_me),
+        refresh_token=create_refresh_token(str(user.id), remember_me=remember_me, jti=jti),
         user=_user_to_out(user),
     )

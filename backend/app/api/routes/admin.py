@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.file_validation import NOSNIFF_HEADERS, read_upload_limited, sniff_image_mime
 from app.deps import CurrentUser, DBSession
 from app.models.app_settings import AppSettings
 from app.models.user import User
@@ -20,8 +21,9 @@ from app.services.audit_service import (
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/svg+xml"}
-ALLOWED_FAVICON_TYPES = {"image/png", "image/jpeg", "image/webp", "image/svg+xml", "image/x-icon", "image/vnd.microsoft.icon", "image/ico"}
+# SVG intentionally excluded: scriptable content type -> stored XSS risk
+ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp"}
+ALLOWED_FAVICON_TYPES = {"image/png", "image/jpeg", "image/webp", "image/x-icon"}
 MAX_LOGO_SIZE = 2 * 1024 * 1024  # 2 MB
 MAX_FAVICON_SIZE = 512 * 1024  # 512 KB
 
@@ -152,19 +154,17 @@ async def upload_logo(
     """Upload a logo image. Admin only."""
     await _require_admin(current)
 
-    if file.content_type not in ALLOWED_IMAGE_TYPES:
+    contents = await read_upload_limited(file, MAX_LOGO_SIZE)
+    real_mime = sniff_image_mime(contents)
+    if real_mime is None or real_mime not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            f"Invalid image type. Allowed: {', '.join(ALLOWED_IMAGE_TYPES)}",
+            f"Invalid image content. Allowed: {', '.join(ALLOWED_IMAGE_TYPES)}",
         )
-
-    contents = await file.read()
-    if len(contents) > MAX_LOGO_SIZE:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Logo too large (max 2 MB)")
 
     settings = await _get_or_create_settings(db)
     settings.logo_bytes = contents
-    settings.logo_mime_type = file.content_type
+    settings.logo_mime_type = real_mime
     await db.commit()
     await db.refresh(settings)
 
@@ -219,7 +219,11 @@ async def get_logo(db: DBSession) -> Response:
     settings = await _get_or_create_settings(db)
     if settings.logo_bytes is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No logo set")
-    return Response(content=settings.logo_bytes, media_type=settings.logo_mime_type or "image/png")
+    return Response(
+        content=settings.logo_bytes,
+        media_type=settings.logo_mime_type or "image/png",
+        headers=NOSNIFF_HEADERS,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -235,24 +239,17 @@ async def upload_favicon(
     """Upload a favicon image. Admin only."""
     await _require_admin(current)
 
-    # Accept both standard and non-standard MIME types for favicons
-    mime = file.content_type or ""
-    # Some browsers send image/x-icon or image/vnd.microsoft.icon for .ico files
-    if mime not in ALLOWED_FAVICON_TYPES:
-        # Also allow generic image/* as a fallback
-        if not mime.startswith("image/"):
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                f"Invalid image type. Allowed: {', '.join(ALLOWED_FAVICON_TYPES)}",
-            )
-
-    contents = await file.read()
-    if len(contents) > MAX_FAVICON_SIZE:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Favicon too large (max 512 KB)")
+    contents = await read_upload_limited(file, MAX_FAVICON_SIZE)
+    real_mime = sniff_image_mime(contents)
+    if real_mime is None or real_mime not in ALLOWED_FAVICON_TYPES:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Invalid image content. Allowed: {', '.join(ALLOWED_FAVICON_TYPES)}",
+        )
 
     settings = await _get_or_create_settings(db)
     settings.favicon_bytes = contents
-    settings.favicon_mime_type = mime or "image/png"
+    settings.favicon_mime_type = real_mime
     await db.commit()
     await db.refresh(settings)
 
@@ -307,7 +304,11 @@ async def get_favicon(db: DBSession) -> Response:
     settings = await _get_or_create_settings(db)
     if settings.favicon_bytes is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No favicon set")
-    return Response(content=settings.favicon_bytes, media_type=settings.favicon_mime_type or "image/png")
+    return Response(
+        content=settings.favicon_bytes,
+        media_type=settings.favicon_mime_type or "image/png",
+        headers=NOSNIFF_HEADERS,
+    )
 
 
 @router.get("/public-settings")
@@ -382,6 +383,23 @@ async def update_user(
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+
+    # Prevent locking out the last active admin
+    removing_admin = (data.is_admin is False or data.is_active is False)
+    if removing_admin and user.is_admin:
+        other_admins = (await db.execute(
+            select(func.count(User.id)).where(
+                User.is_admin == True,  # noqa: E712
+                User.is_active == True,  # noqa: E712
+                User.id != user.id,
+            )
+        )).scalar() or 0
+        if other_admins == 0:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Cannot demote or deactivate the last active admin",
+            )
+
     if data.is_admin is not None:
         user.is_admin = data.is_admin
     if data.is_active is not None:
