@@ -386,94 +386,102 @@ _FAMILIES: list[ColumnFamily] = [
 
     # Poroshell 120 (solid core 2.7 µm, 120Å)
     ColumnFamily("Agilent", "Poroshell 120 EC-C18", "C18",
-        (2, 9), 60, "L1",
-        "Solid core 2.7µm, 120Å pore, 90 m²/g, endcapped, HPLC efficiency",
+        (2, 8), 60, "L1",
+        "Solid core 2.7µm, 120Å pore, 130 m²/g, 10% carbon, endcapped, "
+        "HPLC efficiency",
         {2.7: _CORESHELL_DIMS}),
 
     ColumnFamily("Agilent", "Poroshell 120 SB-C18", "C18",
-        (1, 8), 60, "L1",
-        "Solid core 2.7µm, StableBond, low pH optimized, 120Å pore",
+        (1, 8), 90, "L1",
+        "Solid core 2.7µm, StableBond, 120Å pore, 130 m²/g, 9% carbon, "
+        "not endcapped, low pH optimized",
         {2.7: _CORESHELL_DIMS}),
 
     ColumnFamily("Agilent", "Poroshell 120 HPH-C18", "C18",
         (2, 11), 60, "L1",
-        "Solid core 2.7µm, high pH hybrid, 120Å pore, bidentate",
+        "Solid core 2.7µm, high pH hybrid, 100Å pore, 95 m²/g, "
+        "bidentate, pH 2-11",
         {2.7: _CORESHELL_DIMS}),
 
     ColumnFamily("Agilent", "Poroshell 120 EC-C8", "C8",
-        (2, 9), 60, "L7",
-        "Solid core 2.7µm, 120Å pore, less retentive, endcapped",
+        (2, 8), 60, "L7",
+        "Solid core 2.7µm, 120Å pore, 130 m²/g, 5% carbon, "
+        "less retentive, endcapped",
         {2.7: _CORESHELL_DIMS}),
 
     ColumnFamily("Agilent", "Poroshell 120 Phenyl-Hexyl", "phenyl",
-        (2, 9), 60, "L11",
-        "Solid core 2.7µm, phenyl-hexyl, aromatic selectivity, 120Å pore",
+        (2, 8), 60, "L11",
+        "Solid core 2.7µm, phenyl-hexyl, 120Å pore, 130 m²/g, 9% carbon, "
+        "aromatic selectivity, endcapped",
         {2.7: _CORESHELL_DIMS}),
 
     ColumnFamily("Agilent", "Poroshell 120 PFP", "PFP",
-        (2, 8), 50, "L43",
-        "Solid core 2.7µm, pentafluorophenyl, positional isomers, 120Å pore",
+        (2, 8), 60, "L43",
+        "Solid core 2.7µm, pentafluorophenyl, 120Å pore, 130 m²/g, "
+        "5.1% carbon, positional isomers, endcapped",
         {2.7: _CORESHELL_DIMS}),
 
     ColumnFamily("Agilent", "Poroshell 120 HILIC-Z", "HILIC",
-        (2, 12), 80, None,
-        "Solid core HILIC, zwitterionic phase, 120Å pore, pH 2-12, "
-        "polar metabolites, charged polar compounds, 1.9/2.7/4µm",
+        (2, 12), 80, "L114",
+        "Solid core HILIC, zwitterionic phase, 100Å pore, 95 m²/g, "
+        "pH 2-12, polar metabolites, charged polar compounds, 1.9/2.7/4µm",
         {1.9: _UHPLC_DIMS, 2.7: _HILIC_CORESHELL_DIMS, 4.0: _HILIC_DIMS}),
 
     ColumnFamily("Agilent", "Poroshell 120 Bonus-RP", "C18",
-        (2, 9), 60, "L60",
-        "Solid core 2.7µm, polar embedded amide, 100% aqueous stable, 120Å pore",
+        (2, 8), 60, "L60",
+        "Solid core 2.7µm, polar embedded amide, 120Å pore, 130 m²/g, "
+        "9.5% carbon, 100% aqueous stable, triple endcapped",
         {2.7: _CORESHELL_DIMS}),
 
     # InfinityLab Poroshell 120 specialty
     ColumnFamily("Agilent", "InfinityLab Poroshell HILIC-Z", "HILIC",
-        (2, 12), 80, None,
-        "PEEK-lined, zwitterionic, 120Å pore, pH 2-12, polar metabolomics, "
-        "vitamins, nucleotides, charged compounds, 1.9/2.7/4µm",
+        (2, 12), 80, "L114",
+        "PEEK-lined, zwitterionic, 100Å pore, 95 m²/g, pH 2-12, "
+        "polar metabolomics, vitamins, nucleotides, charged compounds, "
+        "1.9/2.7/4µm",
         {1.9: _UHPLC_DIMS, 2.7: _HILIC_CORESHELL_DIMS, 4.0: _HILIC_DIMS}),
 
     # --- Additional Poroshell 120 phases ---
     ColumnFamily("Agilent", "Poroshell 120 HPH-C8", "C8",
-        (3, 11), 60, "L7",
-        "Solid core 2.7µm, high pH hybrid C8, 110Å pore, pH 3-11, "
-        "less retentive, bidentate bonding",
+        (2, 11), 60, "L7",
+        "Solid core 2.7µm, high pH hybrid C8, 100Å pore, 95 m²/g, "
+        "pH 2-11, less retentive, bidentate bonding",
         {2.7: _CORESHELL_DIMS}),
 
     ColumnFamily("Agilent", "Poroshell 120 SB-C8", "C8",
         (1, 8), 80, "L7",
-        "Solid core 2.7µm, StableBond C8, low pH, 120Å pore, "
-        "less retentive",
+        "Solid core 2.7µm, StableBond C8, 120Å pore, 130 m²/g, 5.5% carbon, "
+        "low pH, less retentive, not endcapped",
         {2.7: _CORESHELL_DIMS}),
 
     ColumnFamily("Agilent", "Poroshell 120 SB-Aq", "C18",
         (1, 8), 80, "L96",
-        "Solid core 2.7µm, StableBond aqueous, 100% aqueous, 120Å pore, "
-        "polar compounds",
+        "Solid core 2.7µm, StableBond aqueous, 120Å pore, 130 m²/g, "
+        "100% aqueous, polar compounds, not endcapped",
         {2.7: _CORESHELL_DIMS}),
 
     ColumnFamily("Agilent", "Poroshell 120 EC-CN", "CN",
         (2, 8), 60, "L10",
-        "Solid core 2.7µm, cyano, 120Å pore, RP and NP mode, "
-        "alternate selectivity, double endcapped",
+        "Solid core 2.7µm, cyano, 120Å pore, 130 m²/g, 3.5% carbon, "
+        "RP and NP mode, alternate selectivity, double endcapped",
         {2.7: _CORESHELL_DIMS}),
 
     ColumnFamily("Agilent", "Poroshell 120 HILIC", "HILIC",
-        (0, 8), 60, "L3",
+        (1, 8), 60, "L3",
         "Solid core 2.7µm, unbonded silica HILIC, 120Å pore, "
-        "polar metabolites, 90 m²/g",
+        "130 m²/g, polar metabolites",
         {2.7: _HILIC_CORESHELL_DIMS}),
 
     ColumnFamily("Agilent", "Poroshell 120 HILIC-OH5", "HILIC",
-        (2, 12), 80, None,
-        "Solid core 2.7µm, diol-bonded HILIC, 120Å pore, pH 2-12, "
-        "polar metabolites, alternative selectivity to HILIC-Z",
+        (1, 7), 45, "L86",
+        "Solid core 2.7µm, diol-bonded HILIC, 120Å pore, 130 m²/g, "
+        "pH 1-7, polar metabolites, alternative selectivity to HILIC-Z",
         {2.7: _HILIC_CORESHELL_DIMS}),
 
     ColumnFamily("Agilent", "Poroshell 120 Aq-C18", "C18",
-        (1, 8), 60, "L1",
-        "Solid core 2.7µm, aqueous-optimized C18, 120Å pore, "
-        "100% aqueous stable, polar compounds",
+        (1, 8), 90, "L1",
+        "Solid core 2.7µm, aqueous-optimized C18, 120Å pore, 130 m²/g, "
+        "100% aqueous stable, polar compounds, endcapped",
         {2.7: _CORESHELL_DIMS}),
 
     # --- Additional ZORBAX phases ---
@@ -599,17 +607,17 @@ _FAMILIES: list[ColumnFamily] = [
         {1.8: _UHPLC_DIMS}),
 
     ColumnFamily("Waters", "ACQUITY UPLC HSS C18 SB", "C18",
-        (1, 8), 45, "L1",
+        (2, 8), 45, "L1",
         "UPLC, HSS silica, low surface coverage, less retentive, 100Å pore",
         {1.8: _UHPLC_DIMS}),
 
     ColumnFamily("Waters", "ACQUITY UPLC HSS T3", "C18",
-        (2, 11), 45, "L1",
+        (2, 8), 45, "L1",
         "UPLC, trifunctionally bonded, 100% aqueous compatible, polar compounds, 100Å pore",
         {1.8: _UHPLC_DIMS}),
 
     ColumnFamily("Waters", "ACQUITY UPLC HSS PFP", "PFP",
-        (1, 8), 45, "L43",
+        (2, 8), 45, "L43",
         "UPLC, HSS pentafluorophenyl, halogenated/aromatic compounds, 100Å pore",
         {1.8: _UHPLC_DIMS}),
 
@@ -661,15 +669,16 @@ _FAMILIES: list[ColumnFamily] = [
         {1.7: _UHPLC_DIMS}),
 
     ColumnFamily("Waters", "ACQUITY Premier HSS T3", "C18",
-        (2, 11), 45, "L1",
+        (2, 8), 45, "L1",
         "Premier UPLC, HSS T3, 100% aqueous, MaxPeak hardware, 100Å pore",
         {1.8: _UHPLC_DIMS}),
 
     # Atlantis Premier
     ColumnFamily("Waters", "Atlantis Premier BEH Z-HILIC", "HILIC",
-        (2, 10), 60, "L3",
+        (2, 10), 60, "L122",
         "Premier BEH Z-HILIC, sulfobetaine zwitterionic, MaxPeak HPS hardware, "
-        "95Å pore, pH 2-10, polar metabolites, metabolomics, 1.7/2.5µm",
+        "95Å pore, 270 m²/g, 17% carbon, pH 2-10, polar metabolites, "
+        "metabolomics, 1.7/2.5µm",
         {1.7: _HILIC_CORESHELL_DIMS, 2.5: _HILIC_CORESHELL_DIMS}),
 
     ColumnFamily("Waters", "Atlantis Premier BEH C18 AX", "C18",
@@ -725,18 +734,18 @@ _FAMILIES: list[ColumnFamily] = [
         {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XSelect HSS T3", "C18",
-        (2, 11), 45, "L1",
+        (2, 8), 45, "L1",
         "HPLC, HSS T3, 100% aqueous compatible, polar compounds, 100Å pore",
         {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XSelect HSS PFP", "PFP",
-        (1, 8), 45, "L43",
+        (2, 8), 45, "L43",
         "HPLC, HSS pentafluorophenyl, halogenated compounds, 100Å pore",
         {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     # --- XSelect HSS CN (cyano) ---
     ColumnFamily("Waters", "XSelect HSS CN", "CN",
-        (1, 8), 45, "L10",
+        (2, 8), 45, "L10",
         "HPLC, HSS cyano, alternate selectivity, 100Å pore, 155 m²/g",
         {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
@@ -937,7 +946,7 @@ _FAMILIES: list[ColumnFamily] = [
     # =======================================================================
 
     ColumnFamily("Waters", "ACQUITY UPLC HSS CN", "CN",
-        (1, 8), 45, "L10",
+        (2, 8), 45, "L10",
         "UPLC, HSS cyano, 100Å pore, 155 m²/g, alternate selectivity, 8% carbon",
         {1.8: _UHPLC_DIMS}),
 
@@ -1164,8 +1173,9 @@ _FAMILIES: list[ColumnFamily] = [
         {1.7: _UHPLC_DIMS, 2.6: _CORESHELL_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Phenomenex", "Kinetex EVO C18", "C18",
-        (1.5, 11), 60, "L1",
-        "Core-shell, extended pH 1.5-11, 100Å pore, organosilica",
+        (1, 12), 60, "L1",
+        "Core-shell, organosilica, pH 1-12, 100Å pore, 200 m²/g, 11% carbon, "
+        "100% aqueous stable",
         {2.6: _CORESHELL_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Phenomenex", "Kinetex Biphenyl", "phenyl",
@@ -1431,38 +1441,45 @@ _FAMILIES: list[ColumnFamily] = [
     # =======================================================================
 
     ColumnFamily("Restek", "ARC C18", "C18",
-        (1.5, 10), 60, "L1",
-        "Core-shell 2.7µm, LC-MS optimized, 160Å pore, 90 m²/g",
+        (1.0, 8.0), 80, "L1",
+        "Core-shell 2.7µm, LC-MS optimized, 90Å pore, 130 m²/g, 7% carbon, "
+        "sterically protected C18, acid-resistant, pH 1-8",
         {2.7: _CORESHELL_DIMS}),
 
     ColumnFamily("Restek", "ARC-18", "C18",
-        (1.5, 10), 60, "L1",
-        "Core-shell 2.7µm, 160Å pore, 90 m²/g, LC-MS optimized",
+        (1.0, 8.0), 80, "L1",
+        "Core-shell 2.7µm, 90Å pore, 130 m²/g, 7% carbon, LC-MS optimized, "
+        "sterically protected, acid-resistant",
         {2.7: _CORESHELL_DIMS}),
 
     ColumnFamily("Restek", "Biphenyl", "phenyl",
-        (1.5, 10), 60, "L11",
-        "Core-shell biphenyl, enhanced aromatic selectivity, PAHs/drugs",
-        {2.6: _CORESHELL_DIMS, 5.0: _CONV_DIMS}),
+        (2.5, 8.0), 80, "L11",
+        "Fully porous 3/5µm biphenyl, 100Å pore, 300 m²/g, 15% carbon, "
+        "enhanced aromatic selectivity, PAHs/drugs, endcapped",
+        {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Restek", "Force C18", "C18",
-        (1, 11), 60, "L1",
-        "UHPLC 1.8µm, high purity silica, 100Å pore, LC-MS optimized",
+        (2.0, 8.0), 80, "L1",
+        "Fully porous 1.8/3/5µm, 100Å pore, 300 m²/g, 20% carbon, "
+        "endcapped, general-purpose RP, LC-MS optimized",
         {1.8: _UHPLC_DIMS}),
 
     ColumnFamily("Restek", "Force Biphenyl", "phenyl",
-        (1, 11), 60, "L11",
-        "UHPLC 1.8µm biphenyl, enhanced aromatic selectivity, 100Å pore",
+        (2.0, 8.0), 80, "L11",
+        "Fully porous 1.8/3/5µm biphenyl, 100Å pore, 300 m²/g, 15% carbon, "
+        "endcapped, enhanced aromatic selectivity",
         {1.8: _UHPLC_DIMS}),
 
     ColumnFamily("Restek", "Raptor ARC C18", "C18",
-        (1.5, 10), 60, "L1",
-        "Raptor core-shell 2.7µm, 160Å pore, LC-MS, Restek flagship",
+        (1.0, 8.0), 80, "L1",
+        "Raptor core-shell 2.7µm, 90Å pore, 130 m²/g, 7% carbon, "
+        "sterically protected C18, LC-MS optimized, pH 1-8, Restek flagship",
         {2.7: _CORESHELL_DIMS}),
 
     ColumnFamily("Restek", "Raptor Biphenyl", "phenyl",
-        (1.5, 10), 60, "L11",
-        "Raptor core-shell 2.7µm biphenyl, drug screening, aromatic selectivity",
+        (2.0, 8.0), 80, "L11",
+        "Raptor core-shell 2.7µm biphenyl, 90Å pore, 130 m²/g, 7% carbon, "
+        "endcapped, drug screening, aromatic selectivity",
         {2.7: _CORESHELL_DIMS}),
 
     # =======================================================================
@@ -1470,8 +1487,9 @@ _FAMILIES: list[ColumnFamily] = [
     # =======================================================================
 
     ColumnFamily("Shimadzu", "Shim-pack GISS C18", "C18",
-        (2, 8), 50, "L1",
-        "UHPLC, low bleed for MS, 120Å pore, high inertness",
+        (1, 10), 60, "L1",
+        "UHPLC, low bleed for MS, 200Å pore, 200 m²/g, 9% carbon, "
+        "high inertness, endcapped",
         {1.9: _UHPLC_DIMS}),
 
     ColumnFamily("Shimadzu", "Shim-pack ODS-III", "C18",
@@ -1480,18 +1498,20 @@ _FAMILIES: list[ColumnFamily] = [
         {3.0: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Shimadzu", "Shim-pack Scepter C18-120", "C18",
-        (1, 10), 50, "L1",
-        "UHPLC 1.9µm, hybrid silica, 120Å pore, pH 1-10, LC-MS",
+        (1, 12), 90, "L1",
+        "UHPLC 1.9µm, hybrid silica, 120Å pore, 360 m²/g, 20% carbon, "
+        "pH 1-12, LC-MS, trifunctional C18",
         {1.9: _UHPLC_DIMS}),
 
     ColumnFamily("Shimadzu", "Shim-pack Scepter C18-300", "C18",
-        (1, 10), 50, "L1",
-        "UHPLC 1.9µm, hybrid silica, 300Å pore, biomolecules",
+        (1, 12), 90, "L1",
+        "UHPLC 1.9µm, hybrid silica, 300Å pore, pH 1-12, biomolecules",
         {1.9: _UHPLC_DIMS}),
 
     ColumnFamily("Shimadzu", "Shim-pack XR-ODS III", "C18",
-        (2, 8), 50, "L1",
-        "UHPLC 1.6µm, 120Å pore, high speed, LC-MS",
+        (2, 7.5), 80, "L1",
+        "UHPLC 1.6µm, 75Å pore, 500 m²/g, 22% carbon, high speed, LC-MS, "
+        "fully porous, endcapped",
         {1.6: _UHPLC_DIMS}),
 
     # =======================================================================
@@ -1665,8 +1685,9 @@ _FAMILIES: list[ColumnFamily] = [
     # =======================================================================
 
     ColumnFamily("Restek", "Raptor HILIC", "HILIC",
-        (2, 8), 40, "L3",
-        "Core-shell 2.7µm HILIC, unbonded silica, 90Å pore, polar metabolites",
+        (1.0, 8.0), 80, "L3",
+        "Raptor core-shell 2.7µm HILIC, unbonded silica, 90Å pore, 130 m²/g, "
+        "polar metabolites, LC-MS",
         {2.7: _HILIC_CORESHELL_DIMS}),
 
     ColumnFamily("Restek", "Ultra HILIC", "HILIC",
@@ -1785,8 +1806,14 @@ _FAMILIES: list[ColumnFamily] = [
 def _infer_phase(fam: ColumnFamily) -> StationaryPhase:
     """Infer stationary phase composition from family properties.
 
-    Uses manufacturer-published specifications. Values are typical
-    production specs; actual lots may vary ±10%.
+    NOTE: These are MODEL ESTIMATES, not certified vendor specifications.
+    Carbon load, bonding density, hydrophobicity index, particle type and
+    base material are derived heuristically from family name, chemistry,
+    pore size and notes. Where a value is directly vendor-published it is
+    recorded in the family `notes`; values produced here are intended as
+    inputs to the retention model and may differ from official production
+    specs. Treat unverified fields as estimates (typical uncertainty
+    ±10-20%) rather than authoritative data.
     """
     name_lower = fam.name.lower()
     chem = fam.chemistry

@@ -501,6 +501,50 @@ class MethodTransferOut(BaseModel):
     notes: list[str]
 
 
+# --- Van Deemter Mapper / Flow Optimizer ---
+
+
+class VanDeemterRequest(BaseModel):
+    # Column: either column_id from the DB, or explicit dims (all three)
+    column_id: str | None = None
+    length_mm: float | None = Field(None, gt=0)
+    inner_diameter_mm: float | None = Field(None, gt=0)
+    particle_size_um: float | None = Field(None, gt=0)
+    particle_type: str | None = None          # fully_porous|core_shell|hybrid|graphitic
+    porosity_total: float | None = Field(None, gt=0, le=1)
+    porosity_interstitial: float = Field(0.40, gt=0, le=1)
+    # Mobile phase / analyte
+    solvent_b: str = "acetonitrile"           # acetonitrile|methanol
+    fraction_b: float = Field(0.5, ge=0.0, le=1.0)
+    temperature_c: float = Field(40.0, ge=-10.0, le=120.0)
+    analyte_mw: float = Field(300.0, gt=0)
+    dm_m2_s: float | None = Field(None, gt=0)  # optional Dm override
+    # Curve / assessment
+    current_flow_ml_min: float | None = Field(None, gt=0)
+    flow_min_ml_min: float | None = Field(None, gt=0)
+    flow_max_ml_min: float | None = Field(None, gt=0)
+    points: int = Field(60, ge=10, le=300)
+    # Optimizer constraints
+    max_pressure_bar: float = Field(600.0, gt=0)
+    target_plates: int | None = Field(None, gt=0)   # enables speed mode
+    diameter_ids_mm: list[float] | None = None      # override standard IDs
+
+
+class VanDeemterOut(BaseModel):
+    column: dict[str, Any]
+    particle_type: str
+    coefficients: dict[str, float]
+    solvent: dict[str, Any]
+    dm_m2_s: float
+    viscosity_cp: float
+    curve: list[dict[str, float]]
+    optimum_efficiency: dict[str, Any]
+    optimum_speed: dict[str, Any] | None
+    current_assessment: dict[str, Any] | None
+    diameter_map: list[dict[str, Any]]
+    notes: list[str]
+
+
 # --- F15: Mobile Phase Editor / Buffer Calculator ---
 
 

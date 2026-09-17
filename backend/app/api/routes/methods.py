@@ -52,6 +52,8 @@ from app.schemas.method import (
     UserTemplateCreate,
     UserTemplateOut,
     UserTemplateUpdate,
+    VanDeemterOut,
+    VanDeemterRequest,
 )
 from app.services import method_service
 
@@ -588,6 +590,160 @@ async def method_transfer(data: MethodTransferRequest) -> MethodTransferOut:
 
     result = transfer_method(source, tgt_col, preserve_resolution=data.preserve_resolution)
     return MethodTransferOut(**result.to_dict())
+
+
+# --- Van Deemter Mapper / Flow Optimizer ---
+
+
+@router.post("/van-deemter", response_model=VanDeemterOut)
+async def van_deemter_map(data: VanDeemterRequest) -> VanDeemterOut:
+    """Van Deemter efficiency analysis and optimal flow-rate selection.
+
+    Computes the plate-height curve H(F), the efficiency optimum
+    u_opt = sqrt(b/c)*Dm/dp, an optional kinetic (speed) optimum at a
+    target plate count and pressure limit, an assessment of the current
+    flow rate, and a diameter map of optimal flows across standard IDs.
+    Accepts either a column_id from the database or explicit dimensions.
+    """
+    from app.core.lss import van_deemter as vd
+
+    notes: list[str] = []
+
+    # Resolve column geometry
+    column_label = "Custom column"
+    if data.column_id:
+        from app.core.chem.columns_db import get_column
+        db_col = get_column(data.column_id)
+        if db_col is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Column not found")
+        column_label = f"{db_col.brand} {db_col.name}"
+        length_mm = data.length_mm or db_col.length_mm
+        id_mm = data.inner_diameter_mm or db_col.inner_diameter_mm
+        dp_um = data.particle_size_um or db_col.particle_size_um
+        particle_type = data.particle_type or (
+            db_col.phase.particle_type if db_col.phase else "fully_porous"
+        )
+    else:
+        if not (data.length_mm and data.inner_diameter_mm and data.particle_size_um):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "Provide column_id or all of length_mm, inner_diameter_mm, "
+                "particle_size_um",
+            )
+        length_mm = data.length_mm
+        id_mm = data.inner_diameter_mm
+        dp_um = data.particle_size_um
+        particle_type = data.particle_type or "fully_porous"
+
+    if particle_type not in vd.VD_COEFFICIENTS:
+        notes.append(
+            f"Unknown particle_type '{particle_type}' — using fully_porous "
+            f"coefficients"
+        )
+        particle_type = "fully_porous"
+
+    col = vd.ColumnGeometry(
+        length_mm=length_mm,
+        inner_diameter_mm=id_mm,
+        particle_size_um=dp_um,
+        particle_type=particle_type,
+        porosity_total=data.porosity_total,
+        porosity_interstitial=data.porosity_interstitial,
+    )
+    eps_t = col.resolved_eps_t()
+
+    # Mobile phase viscosity (tabulated Snyder & Dolan data)
+    try:
+        eta_cp = vd.mobile_phase_viscosity_cp(
+            data.solvent_b, data.fraction_b, data.temperature_c
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+
+    # Diffusion coefficient
+    if data.dm_m2_s:
+        dm = data.dm_m2_s
+        notes.append("Dm supplied directly — Wilke-Chang estimate not used")
+    else:
+        dm = vd.wilke_chang_dm_m2_s(
+            data.analyte_mw, data.solvent_b, data.fraction_b,
+            data.temperature_c, eta_cp,
+        )
+
+    a, b, c = col.coeffs()
+
+    # Efficiency optimum
+    opt_eff = vd.optimize_efficiency(col, dm, eta_cp, data.max_pressure_bar)
+    notes.extend(opt_eff.notes)
+
+    # Speed optimum (kinetic) if target plates requested
+    opt_speed = None
+    if data.target_plates:
+        opt_speed = vd.optimize_speed(
+            col, dm, eta_cp, data.target_plates, data.max_pressure_bar
+        )
+        notes.extend(opt_speed.notes)
+
+    # Flow range for the curve
+    f_lo = data.flow_min_ml_min or max(0.02, opt_eff.flow_ml_min * 0.1)
+    if data.flow_max_ml_min:
+        f_hi = data.flow_max_ml_min
+    else:
+        # Cover 4x optimum, capped where pressure hits 1.2x the limit
+        f_press = opt_eff.flow_ml_min * (
+            data.max_pressure_bar * 1.2 / max(opt_eff.pressure_bar, 1.0)
+        )
+        f_hi = max(opt_eff.flow_ml_min * 4.0, 0.1)
+        if opt_eff.pressure_bar > 0:
+            f_hi = min(f_hi, max(f_press, opt_eff.flow_ml_min * 1.5))
+    if f_hi <= f_lo:
+        f_hi = f_lo * 4.0
+
+    curve = vd.van_deemter_curve(col, dm, eta_cp, f_lo, f_hi, data.points)
+
+    # Diameter map
+    ids = tuple(data.diameter_ids_mm) if data.diameter_ids_mm else vd.STANDARD_IDS_MM
+    dmap = vd.diameter_map(col, dm, eta_cp, data.current_flow_ml_min, ids)
+
+    # Assessment of a supplied current flow
+    assessment = None
+    if data.current_flow_ml_min:
+        assessment = vd.assess_flow(col, dm, eta_cp, data.current_flow_ml_min)
+        if assessment["pressure_bar"] > data.max_pressure_bar:
+            notes.append(
+                f"Current flow {data.current_flow_ml_min} mL/min gives "
+                f"{assessment['pressure_bar']:.0f} bar > limit "
+                f"{data.max_pressure_bar:.0f} bar"
+            )
+
+    return VanDeemterOut(
+        column={
+            "label": column_label,
+            "length_mm": length_mm,
+            "inner_diameter_mm": id_mm,
+            "particle_size_um": dp_um,
+            "porosity_total": eps_t,
+            "porosity_interstitial": data.porosity_interstitial,
+            "holdup_volume_ml": round(
+                vd.holdup_volume_ml(id_mm, length_mm, eps_t), 4
+            ),
+        },
+        particle_type=particle_type,
+        coefficients={"a": a, "b": b, "c": c},
+        solvent={
+            "solvent_b": data.solvent_b,
+            "fraction_b": data.fraction_b,
+            "temperature_c": data.temperature_c,
+        },
+        dm_m2_s=dm,
+        viscosity_cp=eta_cp,
+        curve=[p.to_dict() for p in curve],
+        optimum_efficiency=opt_eff.to_dict(),
+        optimum_speed=opt_speed.to_dict() if opt_speed else None,
+        current_assessment=assessment,
+        diameter_map=[r.to_dict() for r in dmap],
+        notes=notes,
+    )
 
 
 # --- F15: Mobile Phase Editor / Buffer Calculator ---

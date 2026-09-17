@@ -18,6 +18,7 @@ import {
   X,
   ArrowRightLeft,
   Columns3,
+  Gauge,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -61,6 +62,7 @@ const navSections: NavSection[] = [
       { to: '/batch', label: 'Batch Analysis', icon: Layers },
       { to: '/compare', label: 'Method Comparison', icon: GitCompare },
       { to: '/method-transfer', label: 'Method Transfer', icon: ArrowRightLeft },
+      { to: '/van-deemter', label: 'Flow Optimizer', icon: Gauge },
       { to: '/columns', label: 'Column Database', icon: Database },
       { to: '/column-comparison', label: 'Column Comparison', icon: Columns3 },
       { to: '/templates', label: 'Templates', icon: LayoutTemplate },
@@ -85,6 +87,7 @@ const pageTitles: Record<string, string> = {
   '/batch': 'Batch Analysis',
   '/compare': 'Method Comparison',
   '/method-transfer': 'Method Transfer',
+  '/van-deemter': 'Van Deemter Mapper',
   '/column-comparison': 'Column Comparison',
   '/columns': 'Column Database',
   '/templates': 'Method Templates',

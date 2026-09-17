@@ -911,3 +911,91 @@ export interface PeakTrackingResult {
   n_chromatograms: number;
   n_matched_groups: number;
 }
+
+// Van Deemter Mapper / Flow Optimizer
+export interface VanDeemterRequest {
+  column_id?: string;
+  length_mm?: number;
+  inner_diameter_mm?: number;
+  particle_size_um?: number;
+  particle_type?: string;
+  porosity_total?: number;
+  porosity_interstitial?: number;
+  solvent_b?: string;
+  fraction_b?: number;
+  temperature_c?: number;
+  analyte_mw?: number;
+  dm_m2_s?: number;
+  current_flow_ml_min?: number;
+  flow_min_ml_min?: number;
+  flow_max_ml_min?: number;
+  points?: number;
+  max_pressure_bar?: number;
+  target_plates?: number;
+  diameter_ids_mm?: number[];
+}
+
+export interface VanDeemterPoint {
+  flow_ml_min: number;
+  u_mm_s: number;
+  h_um: number;
+  n: number;
+  pressure_bar: number;
+}
+
+export interface VanDeemterOptimum {
+  mode: string;
+  u_mm_s: number;
+  flow_ml_min: number;
+  h_um: number;
+  n: number;
+  t0_s: number;
+  pressure_bar: number;
+  required_length_mm: number | null;
+  pressure_limited: boolean;
+  notes: string[];
+}
+
+export interface VanDeemterDiameterRow {
+  inner_diameter_mm: number;
+  optimal_flow_ml_min: number;
+  u_mm_s: number;
+  pressure_bar: number;
+  n: number;
+  scaled_flow_ml_min: number | null;
+}
+
+export interface VanDeemterAssessment {
+  flow_ml_min: number;
+  u_mm_s: number;
+  h_um: number;
+  n: number;
+  pressure_bar: number;
+  t0_s: number;
+  efficiency_vs_optimum_pct: number;
+  velocity_ratio: number;
+  verdict: string;
+}
+
+export interface VanDeemterResult {
+  column: {
+    label: string;
+    length_mm: number;
+    inner_diameter_mm: number;
+    particle_size_um: number;
+    porosity_total: number;
+    porosity_interstitial: number;
+    holdup_volume_ml: number;
+  };
+  particle_type: string;
+  coefficients: { a: number; b: number; c: number };
+  solvent: { solvent_b: string; fraction_b: number; temperature_c: number };
+  dm_m2_s: number;
+  viscosity_cp: number;
+  curve: VanDeemterPoint[];
+  optimum_efficiency: VanDeemterOptimum;
+  optimum_speed: VanDeemterOptimum | null;
+  current_assessment: VanDeemterAssessment | null;
+  diameter_map: VanDeemterDiameterRow[];
+  notes: string[];
+}

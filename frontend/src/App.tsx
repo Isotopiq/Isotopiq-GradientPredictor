@@ -16,6 +16,7 @@ import { MethodLibraryPage } from '@/pages/MethodLibraryPage';
 import { BatchAnalysisPage } from '@/pages/BatchAnalysisPage';
 import { MethodComparisonPage } from '@/pages/MethodComparisonPage';
 import { MethodTransferPage } from '@/pages/MethodTransferPage';
+import { VanDeemterPage } from '@/pages/VanDeemterPage';
 import { ColumnDatabasePage } from '@/pages/ColumnDatabasePage';
 import { ColumnComparisonPage } from '@/pages/ColumnComparisonPage';
 import { TemplatesPage } from '@/pages/TemplatesPage';
@@ -126,6 +127,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <AppShell>
               <MethodTransferPage />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/van-deemter"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <VanDeemterPage />
             </AppShell>
           </ProtectedRoute>
         }

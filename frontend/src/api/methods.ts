@@ -32,6 +32,8 @@ import type {
   RetentionModelsRegistry,
   AutoSelectResult,
   ModelComparisonResult,
+  VanDeemterRequest,
+  VanDeemterResult,
 } from '@/types';
 
 export const methodsApi = {
@@ -391,6 +393,12 @@ export const methodsApi = {
     preserve_resolution?: boolean;
   }) => {
     const { data } = await apiClient.post<MethodTransferResult>('/methods/method-transfer', params);
+    return data;
+  },
+
+  // Van Deemter Mapper / Flow Optimizer
+  vanDeemter: async (params: VanDeemterRequest) => {
+    const { data } = await apiClient.post<VanDeemterResult>('/methods/van-deemter', params);
     return data;
   },
 
