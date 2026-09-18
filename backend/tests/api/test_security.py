@@ -405,3 +405,115 @@ class TestVanDeemterAnalytes:
         data = r.json()
         assert data["analytes"]["source"] == "dm_override"
         assert data["dm_m2_s"] == pytest.approx(1e-9)
+
+
+# ---------------------------------------------------------------------------
+# Method compound append — POST /methods/{id}/compounds
+# ---------------------------------------------------------------------------
+
+_METHOD_PAYLOAD = {
+    "name": "Add-Compound Test Method",
+    "column_type": "C18",
+    "ph": 2.7,
+    "flow_rate_ml_min": 0.4,
+    "temperature_c": 30.0,
+    "compounds_smiles": ["CN1C=NC2=C1C(=O)N(C(=O)N2C)C"],
+    "compound_names": ["Caffeine"],
+}
+
+
+class TestMethodCompounds:
+    async def _make_method(self, client, headers) -> str:
+        r = await client.post("/api/v1/methods", json=_METHOD_PAYLOAD, headers=headers)
+        assert r.status_code == 201, r.text
+        return r.json()["id"]
+
+    async def test_owner_can_add_compound(self, client):
+        headers = await register_and_login(client, "mc1@test.com")
+        mid = await self._make_method(client, headers)
+        r = await client.post(
+            f"/api/v1/methods/{mid}/compounds",
+            json={"smiles": "Nc1ncnc2[nH]cnc12", "name": "Adenine"},
+            headers=headers,
+        )
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert len(data["compounds_smiles"]) == 2
+        assert data["compound_names"][-1] == "Adenine"
+        assert len(data["compound_ids"]) == 2
+        assert data["compound_ids"][-1] is None
+
+    async def test_non_owner_forbidden(self, client):
+        owner = await register_and_login(client, "mc2@test.com")
+        mid = await self._make_method(client, owner)
+        other = await register_and_login(client, "mc3@test.com")
+        r = await client.post(
+            f"/api/v1/methods/{mid}/compounds",
+            json={"smiles": "Nc1ncnc2[nH]cnc12"},
+            headers=other,
+        )
+        assert r.status_code == 403
+
+    async def test_duplicate_is_idempotent(self, client):
+        headers = await register_and_login(client, "mc4@test.com")
+        mid = await self._make_method(client, headers)
+        smiles = _METHOD_PAYLOAD["compounds_smiles"][0]
+        r = await client.post(
+            f"/api/v1/methods/{mid}/compounds",
+            json={"smiles": smiles},
+            headers=headers,
+        )
+        assert r.status_code == 200
+        assert len(r.json()["compounds_smiles"]) == 1
+
+    async def test_invalid_smiles_400(self, client):
+        headers = await register_and_login(client, "mc5@test.com")
+        mid = await self._make_method(client, headers)
+        r = await client.post(
+            f"/api/v1/methods/{mid}/compounds",
+            json={"smiles": "not-a-smiles!!!"},
+            headers=headers,
+        )
+        assert r.status_code == 400
+
+    async def test_requires_auth(self, client):
+        r = await client.post(
+            "/api/v1/methods/00000000-0000-0000-0000-000000000000/compounds",
+            json={"smiles": "CCO"},
+        )
+        assert r.status_code == 401
+
+    async def test_compound_id_smiles_mismatch_400(self, client):
+        headers = await register_and_login(client, "mc6@test.com")
+        mid = await self._make_method(client, headers)
+        cr = await client.post(
+            "/api/v1/compounds",
+            json={"smiles": "CCO", "name": "ethanol"},
+            headers=headers,
+        )
+        assert cr.status_code in (200, 201), cr.text
+        cid = cr.json()["id"]
+        r = await client.post(
+            f"/api/v1/methods/{mid}/compounds",
+            json={"smiles": "Nc1ncnc2[nH]cnc12", "compound_id": cid},
+            headers=headers,
+        )
+        assert r.status_code == 400
+
+    async def test_compound_id_links_library_entry(self, client):
+        headers = await register_and_login(client, "mc7@test.com")
+        mid = await self._make_method(client, headers)
+        cr = await client.post(
+            "/api/v1/compounds",
+            json={"smiles": "Nc1ncnc2[nH]cnc12", "name": "Adenine"},
+            headers=headers,
+        )
+        cid = cr.json()["id"]
+        r = await client.post(
+            f"/api/v1/methods/{mid}/compounds",
+            json={"smiles": "Nc1ncnc2[nH]cnc12", "name": "Adenine", "compound_id": cid},
+            headers=headers,
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["compound_ids"][-1] == cid

@@ -202,6 +202,15 @@ export const methodsApi = {
     await apiClient.delete(`/methods/${id}`);
   },
 
+  // Append a compound to an existing method's compound list
+  addCompound: async (
+    id: string,
+    compound: { smiles: string; name?: string; compound_id?: string },
+  ) => {
+    const { data } = await apiClient.post<Method>(`/methods/${id}/compounds`, compound);
+    return data;
+  },
+
   // Templates
   listTemplates: async (category?: string) => {
     const { data } = await apiClient.get<MethodTemplate[]>('/methods/templates/list', {

@@ -11,8 +11,10 @@ import { exportApi } from '@/api/export';
 import { GradientChart } from '@/components/GradientChart';
 import { ChromatogramPreview } from '@/components/ChromatogramPreview';
 import { ExportDialog, type ExportSection } from '@/components/ExportDialog';
+import { CompoundPicker } from '@/components/CompoundPicker';
 import { EmptyState } from '@/components/EmptyState';
 import { Skeleton } from '@/components/Skeleton';
+import { useAuth } from '@/context/AuthContext';
 import { toast } from 'sonner';
 import type { Method, GradientPoint, ChromatogramResult, MultiCompoundSuggestion } from '@/types';
 
@@ -42,6 +44,7 @@ export function MethodLibraryPage() {
   const [editGradientTable, setEditGradientTable] = useState<GradientPoint[]>([]);
   const [editName, setEditName] = useState('');
   const [saving, setSaving] = useState(false);
+  const { user } = useAuth();
 
   const { data: methods, isLoading } = useQuery({
     queryKey: ['methods-library'],
@@ -219,6 +222,20 @@ export function MethodLibraryPage() {
       toast.success('Share link disabled');
     },
     onError: () => toast.error('Failed to unshare method'),
+  });
+
+  // Owner (or admin) may add compounds to a method after creation
+  const canEdit = !!selected && (!!user?.is_admin || selected.owner_id === user?.id);
+
+  const addCompoundMutation = useMutation({
+    mutationFn: (compound: { smiles: string; name?: string; compound_id?: string }) =>
+      methodsApi.addCompound(selected!.id, compound),
+    onSuccess: (method) => {
+      setSelected(method);
+      queryClient.invalidateQueries({ queryKey: ['methods-library'] });
+      toast.success('Compound added to method');
+    },
+    onError: () => toast.error('Failed to add compound'),
   });
 
   const handleSaveEdit = async () => {
@@ -605,35 +622,63 @@ export function MethodLibraryPage() {
                   )}
 
                   {/* Compound list */}
-                  {compoundSmiles.length > 0 && (
+                  {(compoundSmiles.length > 0 || canEdit) && (
                     <div className="mt-3 border-t border-border pt-3">
                       <h4 className="text-xs font-semibold text-muted-foreground mb-2">
                         Compounds ({compoundSmiles.length})
                       </h4>
-                      <div className="flex flex-wrap gap-1.5">
-                        {compoundSmiles.map((smi, i) => {
-                          const name = compoundNames[i] || smi.slice(0, 20);
-                          const cid = selected.compound_ids?.[i];
-                          return (
-                            <span
-                              key={i}
-                              className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/50 px-2 py-1 text-xs"
-                              title={smi}
-                            >
-                              <span className="font-medium">{name}</span>
-                              {cid && (
-                                <a
-                                  href={`/compounds`}
-                                  className="text-accent hover:underline"
-                                  title="View in compound library"
-                                >
-                                  <FlaskConical size={10} />
-                                </a>
-                              )}
-                            </span>
-                          );
-                        })}
-                      </div>
+                      {compoundSmiles.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {compoundSmiles.map((smi, i) => {
+                            const name = compoundNames[i] || smi.slice(0, 20);
+                            const cid = selected.compound_ids?.[i];
+                            return (
+                              <span
+                                key={i}
+                                className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/50 px-2 py-1 text-xs"
+                                title={smi}
+                              >
+                                <span className="font-medium">{name}</span>
+                                {cid && (
+                                  <a
+                                    href={`/compounds`}
+                                    className="text-accent hover:underline"
+                                    title="View in compound library"
+                                  >
+                                    <FlaskConical size={10} />
+                                  </a>
+                                )}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {canEdit && (
+                        <div className="mt-2 max-w-xs">
+                          <CompoundPicker
+                            placeholder={
+                              addCompoundMutation.isPending
+                                ? 'Adding...'
+                                : '+ Add compound to method...'
+                            }
+                            onSelect={(c) => {
+                              if (!c.smiles) {
+                                toast.error('Selected compound has no structure');
+                                return;
+                              }
+                              if (compoundSmiles.includes(c.smiles)) {
+                                toast.info('Compound already in method');
+                                return;
+                              }
+                              addCompoundMutation.mutate({
+                                smiles: c.smiles,
+                                name: c.name ?? undefined,
+                                compound_id: c.id,
+                              });
+                            }}
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

@@ -27,8 +27,8 @@ class MethodCreate(BaseModel):
     temperature_c: float | None = None
     method_signature: str | None = None
     compounds_smiles: list[str] | None = None
-    compound_ids: list[str] | None = None
-    compound_names: list[str] | None = None
+    compound_ids: list[str | None] | None = None
+    compound_names: list[str | None] | None = None
     dwell_volume_ml: float | None = None
     dead_volume_ml: float | None = None
     retention_model: str | None = None
@@ -36,6 +36,14 @@ class MethodCreate(BaseModel):
     retention_model_equation: str | None = None
     retention_model_reference: str | None = None
     retention_model_rationale: str | None = None
+
+
+class MethodCompoundAdd(BaseModel):
+    """Append a compound to an existing method's compound list."""
+
+    smiles: str
+    name: str | None = None
+    compound_id: uuid.UUID | None = None
 
 
 class MethodOut(ORMModel):
@@ -55,8 +63,8 @@ class MethodOut(ORMModel):
     is_shared: bool = False
     share_token: str | None = None
     compounds_smiles: list[str] | None = None
-    compound_ids: list[str] | None = None
-    compound_names: list[str] | None = None
+    compound_ids: list[str | None] | None = None
+    compound_names: list[str | None] | None = None
     dwell_volume_ml: float | None = None
     dead_volume_ml: float | None = None
     retention_model: str | None = None

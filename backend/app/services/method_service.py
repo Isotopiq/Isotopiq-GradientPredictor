@@ -150,6 +150,39 @@ async def list_methods(
     return list(result.scalars().all())
 
 
+async def add_compound_to_method(
+    db: AsyncSession,
+    method: Method,
+    smiles: str,
+    name: str | None = None,
+    compound_id: uuid.UUID | None = None,
+) -> bool:
+    """Append a compound to a method's parallel compound lists.
+
+    Returns False (idempotent no-op) when the SMILES is already present.
+    The three JSONB lists are kept index-aligned: names and ids are padded
+    with None if a pre-existing list is shorter than compounds_smiles.
+    """
+    smiles_list = list(method.compounds_smiles or [])
+    if smiles in smiles_list:
+        return False
+    names_list = list(method.compound_names or [])
+    ids_list = list(method.compound_ids or [])
+    while len(names_list) < len(smiles_list):
+        names_list.append(None)
+    while len(ids_list) < len(smiles_list):
+        ids_list.append(None)
+    smiles_list.append(smiles)
+    names_list.append(name or smiles)
+    ids_list.append(str(compound_id) if compound_id else None)
+    method.compounds_smiles = smiles_list
+    method.compound_names = names_list
+    method.compound_ids = ids_list
+    await db.commit()
+    await db.refresh(method)
+    return True
+
+
 async def delete_method(db: AsyncSession, method_id: uuid.UUID) -> bool:
     method = await db.get(Method, method_id)
     if method is None:

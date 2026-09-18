@@ -22,6 +22,7 @@ from app.schemas.method import (
     ChromatogramRequest,
     GradientSimulateOut,
     GradientSimulateRequest,
+    MethodCompoundAdd,
     MethodCreate,
     MethodOut,
     MethodSuggestionOut,
@@ -56,7 +57,7 @@ from app.schemas.method import (
     VanDeemterOut,
     VanDeemterRequest,
 )
-from app.services import method_service
+from app.services import compound_service, method_service
 
 router = APIRouter(prefix="/methods", tags=["methods"])
 
@@ -1246,6 +1247,41 @@ async def unshare_method(
     method.share_token = None
     await db.commit()
     await db.refresh(method)
+    return MethodOut.model_validate(method)
+
+
+@router.post("/{method_id}/compounds", response_model=MethodOut)
+async def add_method_compound(
+    method_id: uuid.UUID, data: MethodCompoundAdd, db: DBSession, current: CurrentUser
+) -> MethodOut:
+    """Append a compound to an existing method's compound list (owner or admin)."""
+    method = await method_service.get_method(db, method_id)
+    if method is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Method not found")
+    if method.owner_id != current.id and not current.is_admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed")
+    from app.core.chem.parser import ChemParseError, parse_mol
+    try:
+        parse_mol(data.smiles)
+    except ChemParseError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid SMILES") from None
+    if data.compound_id is not None:
+        compound = await compound_service.get_compound(db, data.compound_id)
+        if compound is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Compound not found")
+        if (
+            compound.owner_id is not None
+            and compound.owner_id != current.id
+            and not compound.is_shared
+        ):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed")
+        if compound.smiles and compound.smiles != data.smiles:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "SMILES does not match the saved compound"
+            )
+    await method_service.add_compound_to_method(
+        db, method, data.smiles, name=data.name, compound_id=data.compound_id
+    )
     return MethodOut.model_validate(method)
 
 
