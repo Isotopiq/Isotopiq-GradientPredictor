@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import logging
 
+import os
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,7 +33,25 @@ async def seed_admin(db: AsyncSession) -> None:
     email = settings.admin_email
     password = settings.admin_password
 
-    if password == "changeme-admin-2024!":
+    # In production, config.py replaces an unset/default ADMIN_PASSWORD with an
+    # ephemeral random value — surface it once here so the deployer can log in
+    # (visible only in container logs).
+    # NB: compose injects the default string when ADMIN_PASSWORD is unset, so
+    # treat "unset OR still-default" as ephemeral.
+    env_pw = os.environ.get("ADMIN_PASSWORD")
+    prod_ephemeral = (
+        settings.app_env.lower() in ("production", "prod")
+        and (not env_pw or env_pw == "changeme-admin-2024!")
+    )
+    if prod_ephemeral:
+        logger.warning(
+            ">>> EPHEMERAL ADMIN PASSWORD for '%s': %s  — set ADMIN_PASSWORD "
+            "in the environment for a persistent password (this value "
+            "regenerates on every restart).",
+            email,
+            password,
+        )
+    elif password == "changeme-admin-2024!":
         logger.warning(
             "ADMIN_PASSWORD is unset/default — the seeded admin uses a "
             "publicly known password. Set ADMIN_PASSWORD in the environment."

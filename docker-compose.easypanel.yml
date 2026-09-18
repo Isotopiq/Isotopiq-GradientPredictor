@@ -59,7 +59,9 @@ services:
   backend:
     build: ./backend
     environment:
-      # Fail-fast on default secrets in production
+      # Production mode: unset/default secrets are replaced with ephemeral
+      # random values (JWT_SECRET) or logged once at seed time (ADMIN_PASSWORD).
+      # Set real values below for stable sessions + a persistent admin login.
       APP_ENV: "production"
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-lcms}:${POSTGRES_PASSWORD:-changeme}@db:5432/${POSTGRES_DB:-lcms}
       JWT_SECRET: ${JWT_SECRET:-change-this-to-a-long-random-string}
