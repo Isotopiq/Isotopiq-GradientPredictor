@@ -112,6 +112,49 @@ _HILIC_CORESHELL_DIMS: list[tuple[int, float]] = [
     (100, 4.6), (150, 4.6),
 ]
 
+# Waters UPLC HILIC grid — verified vs Waters catalog for ACQUITY UPLC
+# BEH HILIC 1.7 µm: 1.0 mm ID x 50-150; 2.1/3.0 mm ID x 50/75/100/150.
+# Notable: no 30 mm lengths and no 4.6 mm ID for the 1.7 µm HILIC line.
+_UPLC_HILIC_DIMS: list[tuple[int, float]] = [
+    (50, 1.0), (100, 1.0), (150, 1.0),
+    (50, 2.1), (75, 2.1), (100, 2.1), (150, 2.1),
+    (50, 3.0), (75, 3.0), (100, 3.0), (150, 3.0),
+]
+
+# Waters XP 2.5 µm grid — verified vs XP brochure: every XP chemistry is
+# offered in 2.1/3.0/4.6 mm ID x 30/50/75/100/150 mm.
+_XP_DIMS: list[tuple[int, float]] = [
+    (30, 2.1), (50, 2.1), (75, 2.1), (100, 2.1), (150, 2.1),
+    (30, 3.0), (50, 3.0), (75, 3.0), (100, 3.0), (150, 3.0),
+    (30, 4.6), (50, 4.6), (75, 4.6), (100, 4.6), (150, 4.6),
+]
+
+# Waters MaxPeak Premier 2.5 µm grid — verified vs Premier catalog:
+# 2.1 x 50/100/150 + 4.6 x 50/100/150 (no 3.0 mm ID, no 30/75 mm lengths).
+_PREMIER_25_DIMS: list[tuple[int, float]] = [
+    (50, 2.1), (100, 2.1), (150, 2.1),
+    (50, 4.6), (100, 4.6), (150, 4.6),
+]
+
+# Waters HPLC HILIC grid (XBridge/XSelect/Atlantis 3-5 µm) — 1.0 mm ID
+# analytical through 4.6 x 250 mm.
+_WATERS_HILIC_DIMS: list[tuple[int, float]] = [
+    (50, 1.0), (100, 1.0), (150, 1.0),
+    (30, 2.1), (50, 2.1), (100, 2.1), (150, 2.1),
+    (30, 3.0), (50, 3.0), (100, 3.0), (150, 3.0), (250, 3.0),
+    (30, 4.6), (50, 4.6), (75, 4.6), (100, 4.6), (150, 4.6), (250, 4.6),
+]
+
+# Atlantis Premier BEH Z-HILIC — exact vendor lists (720007337en):
+# 1.7 µm is 2.1 mm ID only; 2.5 µm adds 4.6; 5 µm is 4.6-only incl. 250 mm.
+_ZHILIC_17_DIMS: list[tuple[int, float]] = [(50, 2.1), (100, 2.1), (150, 2.1)]
+_ZHILIC_25_DIMS: list[tuple[int, float]] = [
+    (50, 2.1), (100, 2.1), (150, 2.1), (50, 4.6), (100, 4.6), (150, 4.6),
+]
+_ZHILIC_50_DIMS: list[tuple[int, float]] = [
+    (50, 4.6), (100, 4.6), (150, 4.6), (250, 4.6),
+]
+
 
 @dataclass(frozen=True)
 class ColumnFamily:
@@ -593,12 +636,12 @@ _FAMILIES: list[ColumnFamily] = [
     ColumnFamily("Waters", "ACQUITY UPLC BEH Amide", "HILIC",
         (1, 12), 60, None,
         "UPLC, amide-bonded HILIC, 130Å pore, polar metabolites, sugars",
-        {1.7: _HILIC_CORESHELL_DIMS}),
+        {1.7: _UPLC_HILIC_DIMS}),
 
     ColumnFamily("Waters", "ACQUITY UPLC BEH HILIC", "HILIC",
         (1, 12), 45, "L3",
         "UPLC, unbonded BEH HILIC, 130Å pore, sugars/nucleotides",
-        {1.7: _HILIC_CORESHELL_DIMS}),
+        {1.7: _UPLC_HILIC_DIMS}),
 
     # ACQUITY UPLC HSS (1.8 µm, pH 1-8)
     ColumnFamily("Waters", "ACQUITY UPLC HSS C18", "C18",
@@ -678,8 +721,8 @@ _FAMILIES: list[ColumnFamily] = [
         (2, 10), 60, "L122",
         "Premier BEH Z-HILIC, sulfobetaine zwitterionic, MaxPeak HPS hardware, "
         "95Å pore, 270 m²/g, 17% carbon, pH 2-10, polar metabolites, "
-        "metabolomics, 1.7/2.5µm",
-        {1.7: _HILIC_CORESHELL_DIMS, 2.5: _HILIC_CORESHELL_DIMS}),
+        "metabolomics, 1.7/2.5/5µm",
+        {1.7: _ZHILIC_17_DIMS, 2.5: _ZHILIC_25_DIMS, 5.0: _ZHILIC_50_DIMS}),
 
     ColumnFamily("Waters", "Atlantis Premier BEH C18 AX", "C18",
         (1, 12), 60, "L1",
@@ -691,70 +734,70 @@ _FAMILIES: list[ColumnFamily] = [
     ColumnFamily("Waters", "XBridge BEH C18", "C18",
         (1, 12), 90, "L1",
         "HPLC, BEH hybrid, 130Å pore, high pH stable, up to 90°C, 18% carbon",
-        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _XP_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XBridge BEH C8", "C8",
         (1, 12), 90, "L7",
         "HPLC, BEH C8, 130Å pore, less retentive, high pH stable",
-        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _XP_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XBridge BEH Shield RP18", "C18",
         (1, 12), 90, "L1",
         "HPLC, BEH Shield, polar embedded, alternate selectivity, 130Å pore",
-        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _XP_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XBridge BEH Phenyl", "phenyl",
         (1, 12), 90, "L11",
         "HPLC, BEH phenyl, aromatic selectivity, high pH, 130Å pore",
-        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _XP_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XBridge BEH HILIC", "HILIC",
         (1, 12), 45, "L3",
         "HPLC, BEH HILIC, 130Å pore, polar compounds, sugars",
-        {2.5: _HILIC_CORESHELL_DIMS, 3.5: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+        {2.5: _XP_DIMS, 3.5: _WATERS_HILIC_DIMS, 5.0: _WATERS_HILIC_DIMS}),
 
     # XSelect (HPLC, CSH/HSS, 2.5/3.5/5 µm; 2.5 µm = XP hardware)
     ColumnFamily("Waters", "XSelect CSH C18", "C18",
         (1, 12), 90, "L1",
         "HPLC, CSH charged surface, improved peak shape, 130Å pore, 18% carbon",
-        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _XP_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XSelect CSH C8", "C8",
         (1, 12), 90, "L7",
         "HPLC, CSH C8, charged surface, less retentive, 130Å pore",
-        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _XP_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XSelect CSH Phenyl-Hexyl", "phenyl",
         (1, 12), 90, "L11",
         "HPLC, CSH phenyl-hexyl, charged surface, aromatic selectivity, 130Å pore",
-        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _XP_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XSelect CSH Fluoro-Phenyl", "PFP",
         (1, 12), 50, "L43",
         "HPLC, CSH fluoro-phenyl, alternate selectivity, 130Å pore",
-        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _XP_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XSelect HSS T3", "C18",
         (2, 8), 45, "L1",
         "HPLC, HSS T3, 100% aqueous compatible, polar compounds, 100Å pore",
-        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _XP_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XSelect HSS PFP", "PFP",
         (2, 8), 45, "L43",
         "HPLC, HSS pentafluorophenyl, halogenated compounds, 100Å pore",
-        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _XP_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     # --- XSelect HSS CN (cyano) ---
     ColumnFamily("Waters", "XSelect HSS CN", "CN",
         (2, 8), 45, "L10",
         "HPLC, HSS cyano, alternate selectivity, 100Å pore, 155 m²/g",
-        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _XP_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     # --- XBridge BEH Amide (HPLC HILIC, 2.5 µm = XP hardware) ---
     ColumnFamily("Waters", "XBridge BEH Amide", "HILIC",
         (2, 11), 90, "L68",
         "HPLC, BEH amide, HILIC for polar compounds/sugars, 130Å pore, 12% carbon",
-        {2.5: _HILIC_CORESHELL_DIMS, 3.5: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+        {2.5: _XP_DIMS, 3.5: _WATERS_HILIC_DIMS, 5.0: _WATERS_HILIC_DIMS}),
 
     # --- XBridge BEH C4 (HPLC, wide-pore for proteins) ---
     ColumnFamily("Waters", "XBridge BEH C4", "C4",
@@ -769,37 +812,37 @@ _FAMILIES: list[ColumnFamily] = [
     ColumnFamily("Waters", "XBridge Premier BEH C18", "C18",
         (1, 12), 80, "L1",
         "Premier HPLC, BEH C18, MaxPeak HPS, 130Å pore, 185 m²/g, 18% carbon",
-        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _PREMIER_25_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XBridge Premier BEH C8", "C8",
         (1, 12), 80, "L7",
         "Premier HPLC, BEH C8, MaxPeak HPS, less retentive, 130Å pore",
-        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _PREMIER_25_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XBridge Premier BEH Shield RP18", "C18",
         (2, 11), 80, "L1",
         "Premier HPLC, BEH Shield RP18, polar embedded, MaxPeak HPS, 130Å pore",
-        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _PREMIER_25_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XBridge Premier BEH Phenyl", "phenyl",
         (1, 12), 80, "L11",
         "Premier HPLC, BEH Phenyl, aromatic selectivity, MaxPeak HPS, 130Å pore",
-        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _PREMIER_25_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XBridge Premier BEH HILIC", "HILIC",
         (1, 9), 45, "L3",
         "Premier HPLC, BEH HILIC, unbonded, MaxPeak HPS, 130Å pore, polar compounds",
-        {2.5: _HILIC_CORESHELL_DIMS, 3.5: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+        {2.5: _PREMIER_25_DIMS, 3.5: _WATERS_HILIC_DIMS, 5.0: _WATERS_HILIC_DIMS}),
 
     ColumnFamily("Waters", "XBridge Premier BEH Amide", "HILIC",
         (2, 11), 90, "L68",
         "Premier HPLC, BEH Amide, HILIC for sugars/carbohydrates, MaxPeak HPS, 130Å pore",
-        {2.5: _HILIC_CORESHELL_DIMS, 3.5: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+        {2.5: _PREMIER_25_DIMS, 3.5: _WATERS_HILIC_DIMS, 5.0: _WATERS_HILIC_DIMS}),
 
     ColumnFamily("Waters", "XBridge Premier BEH C18 AX", "C18",
         (2, 10), 80, "L78",
         "Premier HPLC, BEH C18 AX, mixed-mode RP/anion-exchange, MaxPeak HPS, 130Å pore",
-        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _PREMIER_25_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     # =======================================================================
     # WATERS — CORTECS (solid-core, 1.6/2.7 µm, 90/120Å)
@@ -838,7 +881,7 @@ _FAMILIES: list[ColumnFamily] = [
     ColumnFamily("Waters", "CORTECS HILIC", "HILIC",
         (1, 9), 40, "L3",
         "Solid-core, unbonded HILIC silica, 90Å pore, polar compounds, sugars",
-        {1.6: _HILIC_CORESHELL_DIMS, 2.7: _HILIC_CORESHELL_DIMS}),
+        {1.6: _UHPLC_DIMS, 2.7: _CORESHELL_DIMS}),
 
     # =======================================================================
     # WATERS — CORTECS Premier (MaxPeak HPS hardware)
@@ -872,7 +915,7 @@ _FAMILIES: list[ColumnFamily] = [
     ColumnFamily("Waters", "CORTECS Premier HILIC", "HILIC",
         (1, 9), 40, "L3",
         "Premier solid-core, HILIC, MaxPeak HPS, 90Å pore, polar compounds",
-        {1.6: _HILIC_CORESHELL_DIMS, 2.7: _HILIC_CORESHELL_DIMS}),
+        {1.6: _UHPLC_DIMS, 2.7: _CORESHELL_DIMS}),
 
     # =======================================================================
     # WATERS — ACQUITY Premier BEH Amide / HILIC / Glycan (MaxPeak HPS)
@@ -881,12 +924,12 @@ _FAMILIES: list[ColumnFamily] = [
     ColumnFamily("Waters", "ACQUITY Premier BEH Amide", "HILIC",
         (1, 12), 60, "L68",
         "Premier UPLC, BEH Amide, MaxPeak HPS, 130Å pore, polar metabolites, sugars",
-        {1.7: _HILIC_CORESHELL_DIMS}),
+        {1.7: _UPLC_HILIC_DIMS}),
 
     ColumnFamily("Waters", "ACQUITY Premier BEH HILIC", "HILIC",
         (1, 9), 45, "L3",
         "Premier UPLC, BEH HILIC, MaxPeak HPS, 130Å pore, unbonded, polar compounds",
-        {1.7: _HILIC_CORESHELL_DIMS}),
+        {1.7: _UPLC_HILIC_DIMS}),
 
     ColumnFamily("Waters", "ACQUITY Premier Glycan BEH Amide", "HILIC",
         (1, 12), 60, "L68",
@@ -968,7 +1011,7 @@ _FAMILIES: list[ColumnFamily] = [
     ColumnFamily("Waters", "Atlantis HILIC Silica", "HILIC",
         (1, 5), 40, "L3",
         "HPLC, unbonded HILIC silica, 100Å pore, 185 m²/g, polar compounds, >80% organic MP",
-        {3.0: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+        {3.0: _WATERS_HILIC_DIMS, 5.0: _WATERS_HILIC_DIMS}),
 
     # =======================================================================
     # WATERS — SunFire (HPLC, silica, low pH stability, C18/C8)
@@ -977,7 +1020,7 @@ _FAMILIES: list[ColumnFamily] = [
     ColumnFamily("Waters", "SunFire C18", "C18",
         (1, 8), 60, "L1",
         "HPLC, silica C18, 100Å pore, 335 m²/g, 18% carbon, difunctional, low pH stable, MS-friendly",
-        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _XP_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "SunFire C8", "C8",
         (1, 8), 60, "L7",
@@ -1563,11 +1606,6 @@ _FAMILIES: list[ColumnFamily] = [
         (2, 9), 40, "L3",
         "Solid core 2.7µm HILIC, unbonded silica, polar metabolites, 120Å pore",
         {2.7: _HILIC_CORESHELL_DIMS}),
-
-    ColumnFamily("Agilent", "ZORBAX HILIC Plus", "HILIC",
-        (2, 9), 40, "L3",
-        "Fully porous 3.5/5µm HILIC, unbonded silica, 100Å pore, polar compounds",
-        {3.5: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
 
     ColumnFamily("Agilent", "ZORBAX RR HILIC", "HILIC",
         (2, 9), 40, "L3",
