@@ -686,74 +686,75 @@ _FAMILIES: list[ColumnFamily] = [
         "Premier, BEH C18 with anion-exchange, mixed-mode for acidic compounds, 130Å pore",
         {1.7: _UHPLC_DIMS}),
 
-    # XBridge (HPLC, BEH, 3.5/5 µm, pH 1-12, up to 90°C)
+    # XBridge (HPLC, BEH, 2.5/3.5/5 µm, pH 1-12, up to 90°C)
+    # 2.5 µm = "XP" eXtended Performance low-dispersion hardware (UHPLC-capable)
     ColumnFamily("Waters", "XBridge BEH C18", "C18",
         (1, 12), 90, "L1",
         "HPLC, BEH hybrid, 130Å pore, high pH stable, up to 90°C, 18% carbon",
-        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XBridge BEH C8", "C8",
         (1, 12), 90, "L7",
         "HPLC, BEH C8, 130Å pore, less retentive, high pH stable",
-        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XBridge BEH Shield RP18", "C18",
         (1, 12), 90, "L1",
         "HPLC, BEH Shield, polar embedded, alternate selectivity, 130Å pore",
-        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XBridge BEH Phenyl", "phenyl",
         (1, 12), 90, "L11",
         "HPLC, BEH phenyl, aromatic selectivity, high pH, 130Å pore",
-        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XBridge BEH HILIC", "HILIC",
         (1, 12), 45, "L3",
         "HPLC, BEH HILIC, 130Å pore, polar compounds, sugars",
-        {3.5: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+        {2.5: _HILIC_CORESHELL_DIMS, 3.5: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
 
-    # XSelect (HPLC, CSH, 3.5/5 µm)
+    # XSelect (HPLC, CSH/HSS, 2.5/3.5/5 µm; 2.5 µm = XP hardware)
     ColumnFamily("Waters", "XSelect CSH C18", "C18",
         (1, 12), 90, "L1",
         "HPLC, CSH charged surface, improved peak shape, 130Å pore, 18% carbon",
-        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XSelect CSH C8", "C8",
         (1, 12), 90, "L7",
         "HPLC, CSH C8, charged surface, less retentive, 130Å pore",
-        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XSelect CSH Phenyl-Hexyl", "phenyl",
         (1, 12), 90, "L11",
         "HPLC, CSH phenyl-hexyl, charged surface, aromatic selectivity, 130Å pore",
-        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XSelect CSH Fluoro-Phenyl", "PFP",
         (1, 12), 50, "L43",
         "HPLC, CSH fluoro-phenyl, alternate selectivity, 130Å pore",
-        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XSelect HSS T3", "C18",
         (2, 8), 45, "L1",
         "HPLC, HSS T3, 100% aqueous compatible, polar compounds, 100Å pore",
-        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     ColumnFamily("Waters", "XSelect HSS PFP", "PFP",
         (2, 8), 45, "L43",
         "HPLC, HSS pentafluorophenyl, halogenated compounds, 100Å pore",
-        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
     # --- XSelect HSS CN (cyano) ---
     ColumnFamily("Waters", "XSelect HSS CN", "CN",
         (2, 8), 45, "L10",
         "HPLC, HSS cyano, alternate selectivity, 100Å pore, 155 m²/g",
-        {3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
+        {2.5: _UHPLC_DIMS, 3.5: _HPLC_DIMS, 5.0: _CONV_DIMS}),
 
-    # --- XBridge BEH Amide (HPLC HILIC) ---
+    # --- XBridge BEH Amide (HPLC HILIC, 2.5 µm = XP hardware) ---
     ColumnFamily("Waters", "XBridge BEH Amide", "HILIC",
         (2, 11), 90, "L68",
         "HPLC, BEH amide, HILIC for polar compounds/sugars, 130Å pore, 12% carbon",
-        {3.5: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
+        {2.5: _HILIC_CORESHELL_DIMS, 3.5: _HILIC_DIMS, 5.0: _HILIC_DIMS}),
 
     # --- XBridge BEH C4 (HPLC, wide-pore for proteins) ---
     ColumnFamily("Waters", "XBridge BEH C4", "C4",
