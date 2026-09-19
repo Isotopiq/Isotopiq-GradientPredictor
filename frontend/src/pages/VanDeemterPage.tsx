@@ -29,6 +29,7 @@ export function VanDeemterPage() {
   // Column state
   const [columnSearch, setColumnSearch] = useState('');
   const [columnOptions, setColumnOptions] = useState<ColumnSpec[]>([]);
+  const [columnTotal, setColumnTotal] = useState(0);
   const [searching, setSearching] = useState(false);
   const [selectedColumn, setSelectedColumn] = useState<ColumnSpec | null>(null);
   const [lengthMm, setLengthMm] = useState(100);
@@ -61,19 +62,24 @@ export function VanDeemterPage() {
   const [result, setResult] = useState<VanDeemterResult | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Debounced column search
+  const COL_PAGE_SIZE = 15;
+
+  // Debounced column search — first page; "Show more" appends further pages
   useEffect(() => {
     if (!columnSearch.trim()) {
       setColumnOptions([]);
+      setColumnTotal(0);
       return;
     }
     const t = setTimeout(async () => {
       setSearching(true);
       try {
-        const res = await columnsApi.list({ search: columnSearch, limit: 15 });
+        const res = await columnsApi.list({ search: columnSearch, limit: COL_PAGE_SIZE, offset: 0 });
         setColumnOptions(res.columns);
+        setColumnTotal(res.total);
       } catch {
         setColumnOptions([]);
+        setColumnTotal(0);
       } finally {
         setSearching(false);
       }
@@ -81,10 +87,28 @@ export function VanDeemterPage() {
     return () => clearTimeout(t);
   }, [columnSearch]);
 
+  const loadMoreColumns = async () => {
+    setSearching(true);
+    try {
+      const res = await columnsApi.list({
+        search: columnSearch,
+        limit: COL_PAGE_SIZE,
+        offset: columnOptions.length,
+      });
+      setColumnOptions((prev) => [...prev, ...res.columns]);
+      setColumnTotal(res.total);
+    } catch {
+      // keep current options
+    } finally {
+      setSearching(false);
+    }
+  };
+
   const pickColumn = (c: ColumnSpec) => {
     setSelectedColumn(c);
     setColumnSearch(`${c.brand} ${c.name} — ${c.length_mm}×${c.inner_diameter_mm}mm, ${c.particle_size_um}µm`);
     setColumnOptions([]);
+    setColumnTotal(0);
     setLengthMm(c.length_mm);
     setIdMm(c.inner_diameter_mm);
     setDpUm(c.particle_size_um);
@@ -241,6 +265,20 @@ export function VanDeemterPage() {
                     </span>
                   </button>
                 ))}
+                {columnOptions.length < columnTotal && (
+                  <button
+                    onClick={loadMoreColumns}
+                    disabled={searching}
+                    className="block w-full border-t border-border px-3 py-1.5 text-left text-xs font-medium text-accent hover:bg-muted disabled:opacity-50"
+                  >
+                    {searching ? 'Loading…' : `Show more — ${columnOptions.length} of ${columnTotal} results`}
+                  </button>
+                )}
+                {columnOptions.length > 0 && columnOptions.length >= columnTotal && columnTotal > COL_PAGE_SIZE && (
+                  <div className="border-t border-border px-3 py-1 text-[10px] text-muted-foreground">
+                    All {columnTotal} results shown
+                  </div>
+                )}
               </div>
             )}
           </div>
