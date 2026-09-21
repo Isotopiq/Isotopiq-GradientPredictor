@@ -1,8 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { TrendingUp, Plus, Trash2, Calculator, AlertTriangle, CheckCircle2, Download } from 'lucide-react';
 import { methodsApi } from '@/api/methods';
+import { TablePagination } from '@/components/TablePagination';
 import { toast } from 'sonner';
 import type { KnownCompoundRT, PredictionEquation, PredictionResult } from '@/types';
+
+const ROWS_PER_PAGE = 10;
 
 interface Props {
   /** SMILES strings from the parent compound list — auto-populates the table */
@@ -26,8 +29,13 @@ export function PredictionEquationPanel({ compoundsSmiles, compoundNames, compou
   const [newSmiles, setNewSmiles] = useState('');
   const [prediction, setPrediction] = useState<PredictionResult | null>(null);
   const [predicting, setPredicting] = useState(false);
-  // Track whether the user has manually edited RT values so we don't overwrite them
-  const userEditedRTs = useRef<Set<number>>(new Set());
+  // Table pagination — manual (not useTablePagination) because every edit
+  // recreates `compounds`, which would reset the page mid-typing.
+  const [page, setPage] = useState(0);
+  useEffect(() => setPage(0), [compoundsSmiles]);
+  const maxPage = Math.max(0, Math.ceil(compounds.length / ROWS_PER_PAGE) - 1);
+  const clampedPage = Math.min(page, maxPage);
+  const pageRows = compounds.slice(clampedPage * ROWS_PER_PAGE, clampedPage * ROWS_PER_PAGE + ROWS_PER_PAGE);
 
   // Auto-populate SMILES and predicted RTs from the parent compound list.
   // Preserves any RT values the user has already entered manually.
@@ -66,7 +74,9 @@ export function PredictionEquationPanel({ compoundsSmiles, compoundNames, compou
   };
 
   const addRow = () => {
-    setCompounds([...compounds, { smiles: '', rt_min: 0, ph: 2.7 }]);
+    const next = [...compounds, { smiles: '', rt_min: 0, ph: 2.7 }];
+    setCompounds(next);
+    setPage(Math.ceil(next.length / ROWS_PER_PAGE) - 1);
   };
 
   const removeRow = (i: number) => {
@@ -191,7 +201,8 @@ export function PredictionEquationPanel({ compoundsSmiles, compoundNames, compou
               </tr>
             </thead>
             <tbody>
-              {compounds.map((c, i) => {
+              {pageRows.map((c, localI) => {
+                const i = clampedPage * ROWS_PER_PAGE + localI;
                 const name = compoundNames?.[i];
                 return (
                   <tr key={i} className="border-b border-border/50">
@@ -237,6 +248,12 @@ export function PredictionEquationPanel({ compoundsSmiles, compoundNames, compou
             </tbody>
           </table>
         </div>
+        <TablePagination
+          total={compounds.length}
+          page={clampedPage}
+          pageSize={ROWS_PER_PAGE}
+          onPage={setPage}
+        />
         <button onClick={addRow} className="mt-1 flex items-center gap-1 text-xs text-accent hover:underline">
           <Plus className="h-3 w-3" /> Add row
         </button>
