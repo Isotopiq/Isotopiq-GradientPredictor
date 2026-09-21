@@ -5,9 +5,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi.extension import _rate_limit_exceeded_handler
 from slowapi.middleware import SlowAPIMiddleware
+from sqlalchemy.exc import OperationalError as SAOperationalError
 
 from app.api.routes import admin as admin_routes
 from app.api.routes import auth as auth_routes
@@ -64,6 +66,14 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.add_middleware(SlowAPIMiddleware)
+
+    @app.exception_handler(SAOperationalError)
+    @app.exception_handler(OSError)
+    async def db_unavailable(request: Request, exc: Exception) -> JSONResponse:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Service temporarily unavailable — database connection failed"},
+        )
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next) -> Response:
