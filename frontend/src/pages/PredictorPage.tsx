@@ -320,6 +320,13 @@ export function PredictorPage() {
     }
   };
 
+  // Reveal a freshly appended entry: clear any active filter and jump
+  // to the page it lands on (appends go to the end of the list).
+  const revealNewCompound = (newIndex: number) => {
+    setCompoundSearch('');
+    setCompoundPage(Math.floor(newIndex / compoundPageSize));
+  };
+
   const handleCompoundCreated = useCallback(async (c: Compound) => {
     setActiveCompound(c);
     setSaved(false);
@@ -327,15 +334,16 @@ export function PredictorPage() {
     setActiveSmiles(smi);
 
     // Add to compound list (avoid duplicates by SMILES)
-    setCompounds((prev) => {
-      if (prev.some((e) => e.smiles === smi && smi)) return prev;
-      return [...prev, {
+    const isDup = compounds.some((e) => e.smiles === smi && smi);
+    if (!isDup) {
+      revealNewCompound(compounds.length);
+      setCompounds((prev) => [...prev, {
         id: `cmpd-${++compoundIdCounter}`,
         smiles: smi,
         name: c.name || undefined,
         compound: c,
-      }];
-    });
+      }]);
+    }
 
     if (smi) {
       try {
@@ -344,7 +352,7 @@ export function PredictorPage() {
         // fetchSuggestion already shows a toast
       }
     }
-  }, []);
+  }, [compounds, compoundPageSize]);
 
   const fetchSuggestion = async (smi: string) => {
     setSuggesting(true);
@@ -375,6 +383,7 @@ export function PredictorPage() {
       toast.error('Compound already in list');
       return;
     }
+    revealNewCompound(compounds.length);
     setCompounds((prev) => [...prev, {
       id: `cmpd-${++compoundIdCounter}`,
       smiles: activeSmiles.trim(),
@@ -394,6 +403,7 @@ export function PredictorPage() {
       toast.error('Compound already in list');
       return;
     }
+    revealNewCompound(compounds.length);
     setCompounds((prev) => [...prev, {
       id: `cmpd-${++compoundIdCounter}`,
       smiles: smi,
@@ -1084,8 +1094,11 @@ export function PredictorPage() {
                   return (
                     <>
                       <div className="space-y-2">
-                        {paginated.map((entry, i) => {
-                          const pcEntry = multiResult?.per_compound?.find((pc) => pc.index === startIdx + i);
+                        {paginated.map((entry) => {
+                          // index must be into the FULL compounds array —
+                          // startIdx+i is the filtered page index
+                          const fullIndex = compounds.indexOf(entry);
+                          const pcEntry = multiResult?.per_compound?.find((pc) => pc.index === fullIndex);
                           const predictedRtMin = pcEntry?.predicted_rt_s != null
                             ? pcEntry.predicted_rt_s / 60
                             : null;
@@ -1093,7 +1106,7 @@ export function PredictorPage() {
                             <CompoundListEntry
                               key={entry.id}
                               entry={entry}
-                              index={startIdx + i}
+                              index={fullIndex}
                               predictedRtMin={predictedRtMin}
                               onRemove={() => handleRemoveCompound(entry.id)}
                               onRename={(name) => handleRenameCompound(entry.id, name)}
