@@ -1164,18 +1164,20 @@ export function PredictorPage() {
                   type="button"
                   onClick={handleOpenSaveList}
                   disabled={compounds.length === 0}
-                  className="btn-outline btn-sm flex-1"
+                  className="btn-outline btn-sm flex-1 min-w-0 gap-1.5"
                   title="Save current compounds as a named list for reuse"
                 >
-                  <ListPlus size={14} /> Save as List
+                  <ListPlus size={14} className="shrink-0" />
+                  <span className="truncate">Save as List</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowLoadList(!showLoadList)}
-                  className="btn-outline btn-sm flex-1"
+                  className="btn-outline btn-sm flex-1 min-w-0 gap-1.5"
                   title="Load a previously saved compound list"
                 >
-                  <FolderOpen size={14} /> Load List
+                  <FolderOpen size={14} className="shrink-0" />
+                  <span className="truncate">Load List</span>
                 </button>
               </div>
             </div>
@@ -1326,35 +1328,35 @@ export function PredictorPage() {
                   </div>
                 )}
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={handleRecalculate}
                   disabled={recalculating || optimizing || compounds.length === 0}
-                  className="btn-primary flex-1"
+                  className="btn-primary flex-1 min-w-0 gap-1.5"
                 >
-                  <RefreshCw size={14} className={recalculating ? 'animate-spin' : ''} />
-                  {recalculating ? 'Recalculating...' : 'Recalculate'}
+                  <RefreshCw size={14} className={`shrink-0 ${recalculating ? 'animate-spin' : ''}`} />
+                  <span className="truncate">{recalculating ? 'Recalculating...' : 'Recalculate'}</span>
                 </button>
                 <button
                   type="button"
                   onClick={handleOptimizeGradient}
                   disabled={optimizing || recalculating || compounds.length < 2}
-                  className="btn-outline"
+                  className="btn-outline flex-1 min-w-0 gap-1.5"
                   title="Grid-search for the gradient parameters that maximize minimum resolution between all compounds"
                 >
-                  <Zap size={14} className={optimizing ? 'animate-pulse' : ''} />
-                  {optimizing ? 'Optimizing...' : 'Optimize'}
+                  <Zap size={14} className={`shrink-0 ${optimizing ? 'animate-pulse' : ''}`} />
+                  <span className="truncate">{optimizing ? 'Optimizing...' : 'Optimize'}</span>
                 </button>
                 <button
                   type="button"
                   onClick={handleRobustness}
                   disabled={robustnessLoading || compounds.length < 2}
-                  className="btn-outline"
+                  className="btn-outline flex-1 min-w-0 gap-1.5"
                   title="Analyze how small changes in pH, temperature, and flow affect separation"
                 >
-                  <ShieldCheck size={14} className={robustnessLoading ? 'animate-pulse' : ''} />
-                  {robustnessLoading ? 'Analyzing...' : 'Robustness'}
+                  <ShieldCheck size={14} className={`shrink-0 ${robustnessLoading ? 'animate-pulse' : ''}`} />
+                  <span className="truncate">{robustnessLoading ? 'Analyzing...' : 'Robustness'}</span>
                 </button>
               </div>
               <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
