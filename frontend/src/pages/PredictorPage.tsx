@@ -989,8 +989,8 @@ export function PredictorPage() {
 
       {/* Main layout: left setup column + right tabbed results */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        {/* ===== LEFT COLUMN: Setup (sticky on large screens) ===== */}
-        <div className="xl:col-span-4 space-y-3 xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-2">
+        {/* ===== LEFT COLUMN: Setup ===== */}
+        <div className="xl:col-span-4 min-w-0 space-y-3">
           <StructureInput
             onCompoundCreated={handleCompoundCreated}
             onSmilesChange={setActiveSmiles}
@@ -1135,9 +1135,10 @@ export function PredictorPage() {
               </div>
             )}
 
-            {/* Pick from library + Save/Load controls */}
-            <div className="mt-3 grid grid-cols-1 gap-3 border-t border-border pt-3 sm:grid-cols-2">
-              <div>
+            {/* Pick from library + Save/Load controls — stacked so the
+                narrow sidebar doesn't squeeze the picker past its cell */}
+            <div className="mt-3 grid grid-cols-1 gap-3 border-t border-border pt-3">
+              <div className="min-w-0">
                 <label className="label">Pick from saved library</label>
                 <CompoundPicker
                   onSelect={handlePickSavedCompound}
@@ -1145,7 +1146,7 @@ export function PredictorPage() {
                   className="mt-1"
                 />
               </div>
-              <div className="flex items-end gap-2">
+              <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={handleOpenSaveList}

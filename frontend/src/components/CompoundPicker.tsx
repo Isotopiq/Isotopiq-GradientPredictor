@@ -54,13 +54,13 @@ export function CompoundPicker({ onSelect, placeholder = 'Select saved compound.
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="input flex items-center justify-between text-sm"
+        className="input flex w-full items-center justify-between text-sm"
       >
-        <span className="flex items-center gap-2 text-muted-foreground">
-          <Search size={14} />
-          {placeholder}
+        <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
+          <Search size={14} className="shrink-0" />
+          <span className="truncate">{placeholder}</span>
         </span>
-        <ChevronDown size={14} className={cn('transition-transform', open && 'rotate-180')} />
+        <ChevronDown size={14} className={cn('shrink-0 transition-transform', open && 'rotate-180')} />
       </button>
 
       {open && (
