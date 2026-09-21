@@ -12,6 +12,7 @@ import { GradientChart } from '@/components/GradientChart';
 import { ChromatogramPreview } from '@/components/ChromatogramPreview';
 import { ExportDialog, type ExportSection } from '@/components/ExportDialog';
 import { CompoundPicker } from '@/components/CompoundPicker';
+import { TablePagination, useTablePagination } from '@/components/TablePagination';
 import { EmptyState } from '@/components/EmptyState';
 import { Skeleton } from '@/components/Skeleton';
 import { useAuth } from '@/context/AuthContext';
@@ -87,6 +88,9 @@ export function MethodLibraryPage() {
   const compoundNames = useMemo(() => {
     return selected?.compound_names ?? [];
   }, [selected]);
+
+  // Resolution matrix grows quadratically with compound count — paginate
+  const rm = useTablePagination(multiResult?.resolution_matrix);
 
   useEffect(() => {
     if (!selected || compoundSmiles.length === 0 || !editGradientTable.length) {
@@ -762,7 +766,7 @@ export function MethodLibraryPage() {
                               </tr>
                             </thead>
                             <tbody>
-                              {multiResult.resolution_matrix.map((r, i) => {
+                              {rm.pageRows.map((r, i) => {
                                 const nameA = compoundNames[r.compound_a] || compoundSmiles[r.compound_a]?.slice(0, 12) || `#${r.compound_a + 1}`;
                                 const nameB = compoundNames[r.compound_b] || compoundSmiles[r.compound_b]?.slice(0, 12) || `#${r.compound_b + 1}`;
                                 return (
@@ -784,6 +788,12 @@ export function MethodLibraryPage() {
                             </tbody>
                           </table>
                         </div>
+                        <TablePagination
+                          total={rm.total}
+                          page={rm.page}
+                          pageSize={rm.pageSize}
+                          onPage={rm.setPage}
+                        />
                       </div>
                     )}
                   </div>

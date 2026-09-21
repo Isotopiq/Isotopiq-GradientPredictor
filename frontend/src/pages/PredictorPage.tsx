@@ -13,6 +13,7 @@ import { ChromatogramPreview } from '@/components/ChromatogramPreview';
 import { ParameterSliders } from '@/components/ParameterSliders';
 import { MoleculeViewer } from '@/components/MoleculeViewer';
 import { PkaPlotter } from '@/components/PkaPlotter';
+import { TablePagination, useTablePagination } from '@/components/TablePagination';
 import { DisclaimerTooltip } from '@/components/DisclaimerTooltip';
 import { SuitabilityCriteriaPanel } from '@/components/SuitabilityCriteriaPanel';
 import { DwellVolumeGuide } from '@/components/DwellVolumeGuide';
@@ -109,6 +110,8 @@ export function PredictorPage() {
   const [columnSearch, setColumnSearch] = useState('');
   const [showColumnPicker, setShowColumnPicker] = useState(false);
   const [multiResult, setMultiResult] = useState<MultiCompoundSuggestion | null>(null);
+  // Resolution matrix is O(n²) in compound count — paginate
+  const rm = useTablePagination(multiResult?.resolution_matrix);
   const [recalculating, setRecalculating] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
   const [autoAdjustGradient, setAutoAdjustGradient] = useState(false);
@@ -1531,7 +1534,7 @@ export function PredictorPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {multiResult.resolution_matrix.map((pair, idx) => {
+                        {rm.pageRows.map((pair, idx) => {
                           const a = multiResult.per_compound[pair.compound_a];
                           const b = multiResult.per_compound[pair.compound_b];
                           return (
@@ -1556,6 +1559,12 @@ export function PredictorPage() {
                         })}
                       </tbody>
                     </table>
+                    <TablePagination
+                      total={rm.total}
+                      page={rm.page}
+                      pageSize={rm.pageSize}
+                      onPage={rm.setPage}
+                    />
                   </div>
                 </div>
               )}

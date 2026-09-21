@@ -7,6 +7,7 @@ import { ExportDialog } from '@/components/ExportDialog';
 import { parseCompoundCsv, parseSdf } from '@/lib/sdfParser';
 import { MoleculeThumbnail } from '@/components/MoleculeViewer';
 import { EmptyState } from '@/components/EmptyState';
+import { TablePagination, useTablePagination } from '@/components/TablePagination';
 import { toast } from 'sonner';
 import type { MultiCompoundSuggestion } from '@/types';
 
@@ -19,6 +20,8 @@ interface ParsedCompound {
 export function BatchAnalysisPage() {
   const [compounds, setCompounds] = useState<ParsedCompound[]>([]);
   const [results, setResults] = useState<MultiCompoundSuggestion | null>(null);
+  // Resolution matrix is O(n²) in compound count — paginate
+  const rm = useTablePagination(results?.resolution_matrix);
   const [fileName, setFileName] = useState('');
   const [pdfExportOpen, setPdfExportOpen] = useState(false);
 
@@ -277,7 +280,7 @@ export function BatchAnalysisPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {results.resolution_matrix.map((r, i) => {
+                    {rm.pageRows.map((r, i) => {
                       const ra = r as { compound_a: number; compound_b: number; rt_a: number; rt_b: number; resolution: number; co_elution_risk: boolean };
                       return (
                         <tr key={i}>
@@ -299,6 +302,12 @@ export function BatchAnalysisPage() {
                     })}
                   </tbody>
                 </table>
+                <TablePagination
+                  total={rm.total}
+                  page={rm.page}
+                  pageSize={rm.pageSize}
+                  onPage={rm.setPage}
+                />
               </div>
             </div>
           )}
