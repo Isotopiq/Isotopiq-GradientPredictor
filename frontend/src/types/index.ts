@@ -190,6 +190,7 @@ export interface Method {
   retention_model_equation: string | null;
   retention_model_reference: string | null;
   retention_model_rationale: string | null;
+  is_public: boolean;
 }
 
 export interface MethodCreate {
@@ -213,6 +214,23 @@ export interface MethodCreate {
   retention_model_equation?: string;
   retention_model_reference?: string;
   retention_model_rationale?: string;
+  is_public?: boolean;
+}
+
+export interface MethodUpdate {
+  name?: string;
+  column_type?: string;
+  column_dims?: Record<string, unknown>;
+  mobile_phase_a?: string;
+  mobile_phase_b?: string;
+  additive?: string;
+  ph?: number;
+  gradient_table?: GradientPoint[];
+  flow_rate_ml_min?: number;
+  temperature_c?: number;
+  dwell_volume_ml?: number;
+  dead_volume_ml?: number;
+  is_public?: boolean;
 }
 
 export interface ColumnSuggestion {

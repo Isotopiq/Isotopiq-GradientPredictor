@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import (
@@ -63,7 +64,12 @@ async def register(request: Request, data: UserRegister, db: DBSession) -> Token
         raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
     user = User(email=data.email, password_hash=hash_password(data.password), full_name=data.full_name)
     db.add(user)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Concurrent register with the same email beat the check above
+        await db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered") from None
     await db.refresh(user)
     return await _make_token_pair(db, user)
 
@@ -227,7 +233,11 @@ async def delete_profile_picture(db: DBSession, current: CurrentUser) -> UserOut
 @router.get("/profile/picture/{user_id}")
 async def get_profile_picture(user_id: str, db: DBSession) -> Response:
     """Serve a user's profile picture. Public for display in UI."""
-    result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
+    try:
+        uid = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No profile picture") from None
+    result = await db.execute(select(User).where(User.id == uid))
     user = result.scalar_one_or_none()
     if user is None or user.profile_picture_bytes is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No profile picture")

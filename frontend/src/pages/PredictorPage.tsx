@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, Check, Plus, Trash2, RefreshCw, Layers, AlertTriangle, ListPlus, FolderOpen, X, Edit3, Pencil, FileText, LayoutTemplate, Zap, ShieldCheck, FlaskConical, TrendingUp, BarChart3, Settings2, Download } from 'lucide-react';
+import { Save, Check, Plus, Trash2, RefreshCw, Layers, AlertTriangle, ListPlus, FolderOpen, X, Edit3, Pencil, FileText, LayoutTemplate, Zap, ShieldCheck, FlaskConical, TrendingUp, BarChart3, Settings2, Download, Globe } from 'lucide-react';
 import { StructureInput } from '@/components/StructureInput';
 import { ExportDialog } from '@/components/ExportDialog';
 import { exportApi } from '@/api/export';
@@ -100,6 +100,7 @@ export function PredictorPage() {
   const [showSaveMethod, setShowSaveMethod] = useState(false);
   const [methodName, setMethodName] = useState('');
   const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+  const [methodPublic, setMethodPublic] = useState(false);
   const [pdfExportOpen, setPdfExportOpen] = useState(false);
 
   // Column override + multi-compound state
@@ -832,18 +833,12 @@ export function PredictorPage() {
         ? `Multi-compound method (${compounds.length} compounds)`
         : activeCompound?.name || 'Predicted Method');
 
-      // Save as method
-      const compoundSmiles = compounds
-        .map((c) => c.smiles)
-        .filter((s) => s && s.trim());
-      // Collect library compound IDs (only for compounds that came from the library)
-      const compoundIds = compounds
-        .map((c) => c.compound?.id)
-        .filter((id): id is string => !!id);
-      // Collect names (prefer library name, fallback to entry name)
-      const compoundNames = compounds
-        .map((c) => c.compound?.name || c.name || null)
-        .filter((n): n is string => !!n);
+      // Save as method — build parallel arrays from ONE filtered base so
+      // index i always refers to the same compound (nulls preserved).
+      const validCompounds = compounds.filter((c) => c.smiles && c.smiles.trim());
+      const compoundSmiles = validCompounds.map((c) => c.smiles);
+      const compoundIds = validCompounds.map((c) => c.compound?.id ?? null);
+      const compoundNames = validCompounds.map((c) => c.compound?.name || c.name || null);
       await methodsApi.create({
         name,
         column_type: colType,
@@ -859,11 +854,12 @@ export function PredictorPage() {
         compound_names: compoundNames.length > 0 ? compoundNames : undefined,
         dwell_volume_ml: dwellVolume || undefined,
         dead_volume_ml: deadVolume || undefined,
-        retention_model: activeModelInfo?.mechanism ? retentionModel || undefined : retentionModel || undefined,
+        retention_model: retentionModel || undefined,
         retention_model_label: activeModelInfo?.modelLabel || undefined,
         retention_model_equation: activeModelInfo?.modelEquation || undefined,
         retention_model_reference: activeModelInfo?.modelReference || undefined,
         retention_model_rationale: activeModelInfo?.modelRationale || undefined,
+        is_public: methodPublic,
       });
 
       // Optionally save as template too
@@ -1795,6 +1791,16 @@ export function PredictorPage() {
                 />
                 <LayoutTemplate size={14} className="text-accent" />
                 <span>Also save as reusable method template</span>
+              </label>
+              <label className="flex items-center gap-2 rounded-md border border-border p-2.5 text-xs cursor-pointer hover:bg-muted/30">
+                <input
+                  type="checkbox"
+                  checked={methodPublic}
+                  onChange={(e) => setMethodPublic(e.target.checked)}
+                  className="accent-accent"
+                />
+                <Globe size={14} className="text-accent" />
+                <span>Public — visible to all users in the Method Library</span>
               </label>
             </div>
 

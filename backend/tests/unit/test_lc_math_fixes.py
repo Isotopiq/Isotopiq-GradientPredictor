@@ -209,3 +209,23 @@ class TestResolutionMapT0:
             assert len(result.y_values) == 3
         except (ValueError, Exception):
             pytest.skip("Compound parsing not available in test environment")
+
+class TestResolutionArgumentOrder:
+    """resolution() signature is (rt1, w1, rt2, w2). Suitability previously
+    called resolution(rt_i, rt_j, w_i, w_j) — swapping a width with an RT.
+    With equal widths the USP formula is symmetric so the swap was invisible;
+    asymmetric widths expose it."""
+
+    def test_evaluate_min_resolution_matches_usp(self):
+        # rts 300/320 s, FWHM widths 3/9 s (asymmetric on purpose)
+        # correct Rs = 2*(320-300) / (1.699*(3+9)) ≈ 1.962
+        expected = resolution(300, 3.0, 320, 9.0)
+        ev = evaluate_method(
+            [300, 320], [3.0, 9.0], total_time_s=600, t0_s=60,
+        )
+        crit = next(c for c in ev.criteria if c.name == "min_resolution")
+        assert crit.value == pytest.approx(expected, abs=0.01)
+        # Guard against the swapped-arg regression explicitly:
+        # buggy call would compute 2*|3-300|/(1.699*(320+9)) ≈ 1.06
+        buggy = resolution(300, 320, 3.0, 9.0)
+        assert crit.value != pytest.approx(buggy, abs=0.01)

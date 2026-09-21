@@ -114,7 +114,7 @@ def score_method(
                 if sorted_widths and i + 1 < len(sorted_widths)
                 else default_peak_width(sorted_rts[i + 1])
             )
-            rs = resolution(sorted_rts[i], sorted_rts[i + 1], w, w_next)
+            rs = resolution(sorted_rts[i], w, sorted_rts[i + 1], w_next)
             if rs < min_rs:
                 min_rs = rs
         if min_rs == float("inf"):
@@ -177,7 +177,7 @@ def evaluate_method(
                 if sorted_widths and i + 1 < len(sorted_widths)
                 else default_peak_width(sorted_rts[i + 1])
             )
-            rs = resolution(sorted_rts[i], sorted_rts[i + 1], w, w_next)
+            rs = resolution(sorted_rts[i], w, sorted_rts[i + 1], w_next)
             if rs < min_rs:
                 min_rs = rs
         if min_rs == float("inf"):

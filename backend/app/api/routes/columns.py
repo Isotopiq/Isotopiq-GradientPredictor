@@ -13,6 +13,7 @@ from app.core.chem.columns_db import (
     list_columns,
 )
 from app.core.ml.pirm_model import predict_retention
+from app.deps import CurrentUser
 
 router = APIRouter(prefix="/columns", tags=["columns"])
 
@@ -22,17 +23,17 @@ router = APIRouter(prefix="/columns", tags=["columns"])
 # ---------------------------------------------------------------------------
 
 @router.get("/meta/brands")
-async def list_brands() -> list[str]:
+async def list_brands(current: CurrentUser) -> list[str]:
     return get_brands()
 
 
 @router.get("/meta/chemistries")
-async def list_chemistries() -> list[str]:
+async def list_chemistries(current: CurrentUser) -> list[str]:
     return get_chemistries()
 
 
 @router.get("/count")
-async def count_columns() -> dict:
+async def count_columns(current: CurrentUser) -> dict:
     """Return total column count."""
     return {"total": get_column_count()}
 
@@ -64,7 +65,7 @@ class ColumnCompareAllRequest(BaseModel):
 
 
 @router.get("/tanaka/reference")
-async def list_tanaka_reference() -> dict:
+async def list_tanaka_reference(current: CurrentUser) -> dict:
     """List reference Tanaka parameters for common column types."""
     from app.core.chem.column_comparison import REFERENCE_COLUMNS
     return {
@@ -73,7 +74,7 @@ async def list_tanaka_reference() -> dict:
 
 
 @router.get("/tanaka/column/{column_id}")
-async def get_tanaka_for_column(column_id: str) -> dict:
+async def get_tanaka_for_column(column_id: str, current: CurrentUser) -> dict:
     """Get estimated Tanaka parameters for a commercial column from the database."""
     col = get_column(column_id)
     if col is None:
@@ -115,7 +116,7 @@ async def get_tanaka_for_column(column_id: str) -> dict:
 
 
 @router.post("/tanaka/compare")
-async def compare_two_columns(data: ColumnCompareRequest) -> dict:
+async def compare_two_columns(data: ColumnCompareRequest, current: CurrentUser) -> dict:
     """Compare two columns using Tanaka parameters."""
     from app.core.chem.column_comparison import TanakaParameters, compare_columns
 
@@ -126,7 +127,7 @@ async def compare_two_columns(data: ColumnCompareRequest) -> dict:
 
 
 @router.post("/tanaka/compare-all")
-async def compare_all_columns(data: ColumnCompareAllRequest) -> dict:
+async def compare_all_columns(data: ColumnCompareAllRequest, current: CurrentUser) -> dict:
     """Compare all columns against a reference or pairwise."""
     from app.core.chem.column_comparison import TanakaParameters, compare_all, cluster_columns
 
@@ -158,7 +159,7 @@ class PIRMPredictionRequest(BaseModel):
 
 
 @router.post("/predict-retention")
-async def predict_column_retention(req: PIRMPredictionRequest) -> dict:
+async def predict_column_retention(req: PIRMPredictionRequest, current: CurrentUser) -> dict:
     """Predict retention time using the Physics-Informed Retention Model (PIRM).
 
     Uses stationary phase composition (carbon load, bonding density, ligand
@@ -192,6 +193,7 @@ async def predict_column_retention(req: PIRMPredictionRequest) -> dict:
 
 @router.get("")
 async def list_all_columns(
+    current: CurrentUser,
     chemistry: str | None = Query(None),
     brand: str | None = Query(None),
     search: str | None = Query(None),
@@ -210,7 +212,7 @@ async def list_all_columns(
 
 
 @router.get("/{column_id}")
-async def get_single_column(column_id: str) -> dict:
+async def get_single_column(column_id: str, current: CurrentUser) -> dict:
     col = get_column(column_id)
     if col is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Column not found")

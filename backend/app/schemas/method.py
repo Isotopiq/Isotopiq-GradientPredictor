@@ -36,6 +36,25 @@ class MethodCreate(BaseModel):
     retention_model_equation: str | None = None
     retention_model_reference: str | None = None
     retention_model_rationale: str | None = None
+    is_public: bool = False
+
+
+class MethodUpdate(BaseModel):
+    """Partial update for an existing method (owner/admin only)."""
+
+    name: str | None = None
+    column_type: str | None = None
+    column_dims: dict[str, Any] | None = None
+    mobile_phase_a: str | None = None
+    mobile_phase_b: str | None = None
+    additive: str | None = None
+    ph: float | None = None
+    gradient_table: list[dict[str, Any]] | None = None
+    flow_rate_ml_min: float | None = None
+    temperature_c: float | None = None
+    dwell_volume_ml: float | None = None
+    dead_volume_ml: float | None = None
+    is_public: bool | None = None
 
 
 class MethodCompoundAdd(BaseModel):
@@ -72,6 +91,7 @@ class MethodOut(ORMModel):
     retention_model_equation: str | None = None
     retention_model_reference: str | None = None
     retention_model_rationale: str | None = None
+    is_public: bool = False
 
 
 class MethodSuggestionRequest(BaseModel):

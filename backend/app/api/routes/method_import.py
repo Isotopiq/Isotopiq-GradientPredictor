@@ -205,7 +205,12 @@ async def _fetch_compounds_async(
         compound = await compound_service.get_compound(db, cid)
         if compound is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, f"Compound {cid} not found")
-        if compound.owner_id != current.id and not compound.is_shared:
+        if (
+            compound.owner_id is not None
+            and compound.owner_id != current.id
+            and not compound.is_shared
+            and not current.is_admin
+        ):
             raise HTTPException(status.HTTP_403_FORBIDDEN, f"Not allowed to access compound {cid}")
         compounds.append({
             "id": str(compound.id),

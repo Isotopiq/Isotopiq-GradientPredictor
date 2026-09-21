@@ -52,10 +52,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
-  // Try to restore session on mount
+  // Try to restore session on mount. me() 401s trigger a transparent
+  // refresh in the axios interceptor, so a refresh token alone suffices.
   useEffect(() => {
     const token = localStorage.getItem('access_token');
-    if (!token) return;
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (!token && !refreshToken) return;
     let cancelled = false;
     authApi.me()
       .then((u) => { if (!cancelled) setUser(u); })

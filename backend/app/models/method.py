@@ -57,3 +57,7 @@ class Method(Base, UUIDPK, Timestamped):
     # Sharing
     is_shared: Mapped[bool] = mapped_column(default=False, nullable=False)
     share_token: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # Public = visible/readable by any authenticated user in the library.
+    # Distinct from is_shared (link-token sharing). Ownerless rows are
+    # always treated as visible regardless of this flag.
+    is_public: Mapped[bool] = mapped_column(default=False, nullable=False)

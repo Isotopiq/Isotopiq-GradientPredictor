@@ -24,4 +24,8 @@ class PasswordResetToken(Base, UUIDPK, Timestamped):
 
     @property
     def is_expired(self) -> bool:
-        return datetime.now(timezone.utc) >= self.expires_at
+        # SQLite returns naive datetimes; treat naive as UTC
+        exp = self.expires_at
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) >= exp

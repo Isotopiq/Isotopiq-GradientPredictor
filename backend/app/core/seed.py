@@ -72,9 +72,11 @@ async def seed_admin(db: AsyncSession) -> None:
         return
 
     # No user with this email — maybe the email was changed in env.
-    # Look for any existing admin user and update it.
+    # Look for any existing admin user and update it. Use first() not
+    # scalar_one_or_none(): multiple admins may exist and would raise
+    # MultipleResultsFound, crash-looping startup.
     result = await db.execute(select(User).where(User.is_admin == True))
-    any_admin = result.scalar_one_or_none()
+    any_admin = result.scalars().first()
     if any_admin is not None:
         any_admin.email = email
         any_admin.password_hash = hash_password(password)

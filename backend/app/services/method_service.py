@@ -22,11 +22,13 @@ from app.core.lss.gradient_sim import (
 )
 from app.core.rules.engine import suggest_method
 from app.models.method import Method
+from app.models.user import User
 from app.schemas.method import (
     ChromatogramRequest,
     GradientSimulateRequest,
     MethodCreate,
     MethodSuggestionRequest,
+    MethodUpdate,
 )
 
 
@@ -125,6 +127,7 @@ async def create_method(
         retention_model_equation=data.retention_model_equation,
         retention_model_reference=data.retention_model_reference,
         retention_model_rationale=data.retention_model_rationale,
+        is_public=data.is_public,
     )
     db.add(method)
     await db.commit()
@@ -136,18 +139,49 @@ async def get_method(db: AsyncSession, method_id: uuid.UUID) -> Method | None:
     return await db.get(Method, method_id)
 
 
+def can_view_method(method: Method, user: User) -> bool:
+    """Visibility rule shared by list/detail: own, public, or ownerless."""
+    return (
+        method.owner_id is None
+        or method.is_public
+        or method.owner_id == user.id
+        or user.is_admin
+    )
+
+
+def can_modify_method(method: Method, user: User) -> bool:
+    """Mutation rule: owner or admin. Ownerless rows are admin-managed only."""
+    if user.is_admin:
+        return True
+    return method.owner_id is not None and method.owner_id == user.id
+
+
 async def list_methods(
     db: AsyncSession, owner_id: uuid.UUID | None, limit: int = 50, offset: int = 0
 ) -> list[Method]:
-    """List all methods visible to the user.
+    """List methods visible to the user: own + public + ownerless.
 
-    All users can see all methods from all users (collaborative library).
-    The owner_id parameter is kept for API compatibility but no longer filters.
+    owner_id=None lists everything (admin callers pass None).
     """
     stmt = select(Method).order_by(Method.created_at.desc())
+    if owner_id is not None:
+        stmt = stmt.where(
+            (Method.owner_id == owner_id)
+            | (Method.is_public == True)  # noqa: E712
+            | (Method.owner_id.is_(None))
+        )
     stmt = stmt.limit(limit).offset(offset)
     result = await db.execute(stmt)
     return list(result.scalars().all())
+
+
+async def update_method(db: AsyncSession, method: Method, data: MethodUpdate) -> Method:
+    """Apply a partial update (PATCH semantics: unset fields are untouched)."""
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(method, field, value)
+    await db.commit()
+    await db.refresh(method)
+    return method
 
 
 async def add_compound_to_method(

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   Trash2, Download, Eye, FlaskConical, Plus, Share2, Copy, ChevronDown,
-  Pencil, Check, X, Zap,
+  Pencil, Check, X, Zap, Globe,
 } from 'lucide-react';
 import { methodsApi } from '@/api/methods';
 import { apiClient } from '@/api/client';
@@ -43,6 +43,7 @@ export function MethodLibraryPage() {
   const [editTemperature, setEditTemperature] = useState(30);
   const [editGradientTable, setEditGradientTable] = useState<GradientPoint[]>([]);
   const [editName, setEditName] = useState('');
+  const [editPublic, setEditPublic] = useState(false);
   const [saving, setSaving] = useState(false);
   const { user } = useAuth();
 
@@ -69,6 +70,7 @@ export function MethodLibraryPage() {
       setEditPh(selected.ph ?? 2.7);
       setEditTemperature(selected.temperature_c ?? 30);
       setEditGradientTable(selected.gradient_table ?? []);
+      setEditPublic(selected.is_public ?? false);
       setEditing(false);
     } else {
       setChromatogram(null);
@@ -242,34 +244,18 @@ export function MethodLibraryPage() {
     if (!selected) return;
     setSaving(true);
     try {
-      // Rebuild gradient table if edited
-      const bStart = editGradientTable[0]?.percent_b ?? 5;
-      const bEnd = editGradientTable[editGradientTable.length - 1]?.percent_b ?? 95;
-      const gradTime = editGradientTable.length >= 2
-        ? (editGradientTable[editGradientTable.length - 1].time_s - editGradientTable[0].time_s) / 60
-        : 20;
-
-      // Use the update endpoint (create overwrites)
-      await methodsApi.create({
+      // PATCH in place — only sends editable fields; untouched fields
+      // (compounds, dims, volumes, retention metadata) are preserved.
+      const updated = await methodsApi.update(selected.id, {
         name: editName.trim() || selected.name || 'Unnamed Method',
-        column_type: selected.column_type,
         ph: editPh,
-        mobile_phase_a: selected.mobile_phase_a ?? undefined,
-        mobile_phase_b: selected.mobile_phase_b ?? undefined,
-        additive: selected.additive ?? undefined,
         flow_rate_ml_min: editFlowRate,
         temperature_c: editTemperature,
         gradient_table: editGradientTable,
-        compounds_smiles: selected.compounds_smiles ?? undefined,
-        compound_ids: selected.compound_ids ?? undefined,
-        compound_names: selected.compound_names ?? undefined,
-        retention_model: selected.retention_model ?? undefined,
-        retention_model_label: selected.retention_model_label ?? undefined,
-        retention_model_equation: selected.retention_model_equation ?? undefined,
-        retention_model_reference: selected.retention_model_reference ?? undefined,
-        retention_model_rationale: selected.retention_model_rationale ?? undefined,
+        is_public: editPublic,
       });
-      toast.success('Method saved as new version');
+      setSelected(updated);
+      toast.success('Method updated');
       queryClient.invalidateQueries({ queryKey: ['methods-library'] });
       setEditing(false);
     } catch {
@@ -383,7 +369,10 @@ export function MethodLibraryPage() {
                       </td>
                       <td className="tabular-nums">{m.ph?.toFixed(1) ?? '—'}</td>
                       <td>
-                        {m.is_shared && <Share2 size={12} className="text-success" />}
+                        <span className="inline-flex items-center gap-1">
+                          {m.is_public && <Globe size={12} className="text-accent" />}
+                          {m.is_shared && <Share2 size={12} className="text-success" />}
+                        </span>
                       </td>
                     </tr>
                   ))}
@@ -410,7 +399,8 @@ export function MethodLibraryPage() {
                         <>
                           <h2 className="text-sm font-bold">{selected.name || 'Unnamed Method'}</h2>
                           <p className="text-xs text-muted-foreground">
-                            {selected.column_type} • {selected.is_shared ? 'Shared' : 'Private'}
+                            {selected.column_type} • {selected.is_public ? 'Public' : 'Private'}
+                            {selected.is_shared && ' • Shared link'}
                             {compoundSmiles.length > 0 && ` • ${compoundSmiles.length} compound(s)`}
                           </p>
                         </>
@@ -436,6 +426,7 @@ export function MethodLibraryPage() {
                               setEditPh(selected.ph ?? 2.7);
                               setEditTemperature(selected.temperature_c ?? 30);
                               setEditGradientTable(selected.gradient_table ?? []);
+                              setEditPublic(selected.is_public ?? false);
                             }}
                             className="btn-outline btn-sm"
                           >
@@ -444,13 +435,15 @@ export function MethodLibraryPage() {
                         </>
                       ) : (
                         <>
-                          <button
-                            onClick={() => setEditing(true)}
-                            className="btn-outline btn-sm"
-                          >
-                            <Pencil size={14} className="mr-1" /> Edit
-                          </button>
-                          {selected.is_shared ? (
+                          {canEdit && (
+                            <button
+                              onClick={() => setEditing(true)}
+                              className="btn-outline btn-sm"
+                            >
+                              <Pencil size={14} className="mr-1" /> Edit
+                            </button>
+                          )}
+                          {canEdit && (selected.is_shared ? (
                             <>
                               <button
                                 onClick={() => shareMutation.mutate(selected.id)}
@@ -483,7 +476,7 @@ export function MethodLibraryPage() {
                               <Share2 size={14} className="mr-1" />
                               Share
                             </button>
-                          )}
+                          ))}
                           <button
                             onClick={() => setPdfExportOpen(true)}
                             className="btn-outline btn-sm"
@@ -512,14 +505,16 @@ export function MethodLibraryPage() {
                               </div>
                             )}
                           </div>
-                          <button
-                            onClick={() => {
-                              if (confirm('Delete this method?')) deleteMutation.mutate(selected.id);
-                            }}
-                            className="btn-outline btn-sm text-destructive"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          {canEdit && (
+                            <button
+                              onClick={() => {
+                                if (confirm('Delete this method?')) deleteMutation.mutate(selected.id);
+                              }}
+                              className="btn-outline btn-sm text-destructive"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
                         </>
                       )}
                     </div>
@@ -607,6 +602,16 @@ export function MethodLibraryPage() {
                           </div>
                         </div>
                       </div>
+                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={editPublic}
+                          onChange={(e) => setEditPublic(e.target.checked)}
+                          className="accent-accent"
+                        />
+                        <Globe size={12} />
+                        Public — visible to all users in the Method Library
+                      </label>
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 gap-3 text-sm">

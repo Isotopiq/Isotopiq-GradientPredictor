@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from sqlalchemy import func, select
 
 from app.deps import CurrentUser, DBSession
@@ -24,13 +24,18 @@ async def list_notifications(db: DBSession, current: CurrentUser) -> list[dict]:
     notifications: list[dict] = []
 
     # Find column types that have runs but no recent model
-    # or have new runs since last model training
+    # or have new runs since last model training.
+    # Scoped to the user's own + ownerless methods/models so other
+    # users' activity doesn't drive notifications.
+    visible_methods = (Method.owner_id == current.id) | Method.owner_id.is_(None)
+    visible_models = (ModelArtifact.owner_id == current.id) | ModelArtifact.owner_id.is_(None)
     run_counts = await db.execute(
         select(
             Method.column_type,
             func.count(Run.id).label("run_count"),
         )
         .join(Method, Run.method_id == Method.id)
+        .where(visible_methods)
         .group_by(Method.column_type)
     )
 
@@ -39,6 +44,7 @@ async def list_notifications(db: DBSession, current: CurrentUser) -> list[dict]:
         latest_model = await db.execute(
             select(ModelArtifact)
             .where(ModelArtifact.column_type == column_type)
+            .where(visible_models)
             .order_by(ModelArtifact.trained_at.desc())
             .limit(1)
         )
@@ -64,6 +70,7 @@ async def list_notifications(db: DBSession, current: CurrentUser) -> list[dict]:
                 .where(
                     (Method.column_type == column_type)
                     & (Run.created_at > model.trained_at)
+                    & visible_methods
                 )
             )
             new_count = new_runs.scalar() or 0

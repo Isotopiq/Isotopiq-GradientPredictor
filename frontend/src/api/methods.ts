@@ -2,6 +2,7 @@ import { apiClient } from './client';
 import type {
   Method,
   MethodCreate,
+  MethodUpdate,
   MethodSuggestion,
   MethodSuggestionRequest,
   MethodTemplate,
@@ -195,6 +196,11 @@ export const methodsApi = {
 
   get: async (id: string) => {
     const { data } = await apiClient.get<Method>(`/methods/${id}`);
+    return data;
+  },
+
+  update: async (id: string, patch: MethodUpdate) => {
+    const { data } = await apiClient.patch<Method>(`/methods/${id}`, patch);
     return data;
   },
 

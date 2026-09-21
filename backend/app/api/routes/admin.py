@@ -379,7 +379,11 @@ async def update_user(
     """Update a user (toggle admin, activate/deactivate). Admin only."""
     await _require_admin(current)
     import uuid as _uuid
-    result = await db.execute(select(User).where(User.id == _uuid.UUID(user_id)))
+    try:
+        uid = _uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found") from None
+    result = await db.execute(select(User).where(User.id == uid))
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
@@ -432,7 +436,11 @@ async def delete_user(
     import uuid as _uuid
     if str(current.id) == user_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot delete your own account")
-    result = await db.execute(select(User).where(User.id == _uuid.UUID(user_id)))
+    try:
+        uid = _uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found") from None
+    result = await db.execute(select(User).where(User.id == uid))
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")

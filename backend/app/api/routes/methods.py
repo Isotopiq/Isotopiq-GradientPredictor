@@ -29,6 +29,7 @@ from app.schemas.method import (
     MethodSuggestionRequest,
     MethodTransferOut,
     MethodTransferRequest,
+    MethodUpdate,
     MobilePhaseCheckRequest,
     ModelSelectionOut,
     ModelSelectionRequest,
@@ -679,7 +680,10 @@ async def van_deemter_map(data: VanDeemterRequest, db: DBSession, current: Curre
         for cid in data.compound_ids:
             cpd = found.get(cid)
             if cpd is None or (
-                cpd.owner_id != current.id and not cpd.is_shared and not current.is_admin
+                cpd.owner_id is not None
+                and cpd.owner_id != current.id
+                and not cpd.is_shared
+                and not current.is_admin
             ):
                 raise HTTPException(
                     status.HTTP_404_NOT_FOUND, f"Compound {cid} not found"
@@ -966,8 +970,10 @@ async def list_methods(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> list[MethodOut]:
-    # All users see all methods (collaborative library)
-    items = await method_service.list_methods(db, None, limit, offset)
+    # Visibility: own + public + ownerless. Admins see everything.
+    items = await method_service.list_methods(
+        db, None if current.is_admin else current.id, limit, offset
+    )
     return [MethodOut.model_validate(m) for m in items]
 
 
@@ -1198,8 +1204,22 @@ async def get_method(method_id: uuid.UUID, db: DBSession, current: CurrentUser) 
     method = await method_service.get_method(db, method_id)
     if method is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Method not found")
-    if method.owner_id is not None and method.owner_id != current.id:
+    if not method_service.can_view_method(method, current):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed")
+    return MethodOut.model_validate(method)
+
+
+@router.patch("/{method_id}", response_model=MethodOut)
+async def update_method(
+    method_id: uuid.UUID, data: MethodUpdate, db: DBSession, current: CurrentUser
+) -> MethodOut:
+    """Partially update a method in place (owner or admin)."""
+    method = await method_service.get_method(db, method_id)
+    if method is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Method not found")
+    if not method_service.can_modify_method(method, current):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed")
+    await method_service.update_method(db, method, data)
     return MethodOut.model_validate(method)
 
 
@@ -1208,7 +1228,7 @@ async def delete_method(method_id: uuid.UUID, db: DBSession, current: CurrentUse
     method = await method_service.get_method(db, method_id)
     if method is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Method not found")
-    if method.owner_id != current.id:
+    if not method_service.can_modify_method(method, current):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed")
     await method_service.delete_method(db, method_id)
 
@@ -1221,7 +1241,7 @@ async def share_method(
     method = await method_service.get_method(db, method_id)
     if method is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Method not found")
-    if method.owner_id != current.id:
+    if not method_service.can_modify_method(method, current):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed")
 
     method.is_shared = True
@@ -1240,7 +1260,7 @@ async def unshare_method(
     method = await method_service.get_method(db, method_id)
     if method is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Method not found")
-    if method.owner_id != current.id:
+    if not method_service.can_modify_method(method, current):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed")
 
     method.is_shared = False
@@ -1258,7 +1278,7 @@ async def add_method_compound(
     method = await method_service.get_method(db, method_id)
     if method is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Method not found")
-    if method.owner_id != current.id and not current.is_admin:
+    if not method_service.can_modify_method(method, current):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed")
     from app.core.chem.parser import ChemParseError, parse_mol
     try:
@@ -1293,8 +1313,7 @@ async def fork_method(
     method = await method_service.get_method(db, method_id)
     if method is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Method not found")
-    if (method.owner_id is not None and method.owner_id != current.id
-            and not method.is_shared):
+    if not (method.is_shared or method_service.can_view_method(method, current)):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed")
 
     data = MethodCreate(
@@ -1308,6 +1327,17 @@ async def fork_method(
         gradient_table=method.gradient_table,
         flow_rate_ml_min=method.flow_rate_ml_min,
         temperature_c=method.temperature_c,
+        method_signature=method.method_signature,
+        compounds_smiles=method.compounds_smiles,
+        compound_ids=method.compound_ids,
+        compound_names=method.compound_names,
+        dwell_volume_ml=method.dwell_volume_ml,
+        dead_volume_ml=method.dead_volume_ml,
+        retention_model=method.retention_model,
+        retention_model_label=method.retention_model_label,
+        retention_model_equation=method.retention_model_equation,
+        retention_model_reference=method.retention_model_reference,
+        retention_model_rationale=method.retention_model_rationale,
     )
     new_method = await method_service.create_method(db, current.id, data)
     return MethodOut.model_validate(new_method)

@@ -517,3 +517,115 @@ class TestMethodCompounds:
         assert r.status_code == 200
         data = r.json()
         assert data["compound_ids"][-1] == cid
+
+
+# ---------------------------------------------------------------------------
+# Method visibility (is_public) + PATCH + fork completeness
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+class TestMethodVisibility:
+    async def _make_method(self, client, headers, public=False):
+        r = await client.post(
+            "/api/v1/methods",
+            json={"name": "vis test", "column_type": "C18", "is_public": public},
+            headers=headers,
+        )
+        assert r.status_code == 201, r.text
+        return r.json()["id"]
+
+    async def test_private_method_hidden_from_other_users(self, client):
+        owner = await register_and_login(client, "vis-owner@test.com")
+        other = await register_and_login(client, "vis-other@test.com")
+        mid = await self._make_method(client, owner, public=False)
+        # Detail: 403
+        r = await client.get(f"/api/v1/methods/{mid}", headers=other)
+        assert r.status_code == 403
+        # List: absent
+        r = await client.get("/api/v1/methods?limit=200", headers=other)
+        assert mid not in [m["id"] for m in r.json()]
+
+    async def test_public_method_visible_to_other_users(self, client):
+        owner = await register_and_login(client, "vis-owner2@test.com")
+        other = await register_and_login(client, "vis-other2@test.com")
+        mid = await self._make_method(client, owner, public=True)
+        r = await client.get(f"/api/v1/methods/{mid}", headers=other)
+        assert r.status_code == 200
+        assert r.json()["is_public"] is True
+        r = await client.get("/api/v1/methods?limit=200", headers=other)
+        assert mid in [m["id"] for m in r.json()]
+
+    async def test_patch_toggles_visibility(self, client):
+        owner = await register_and_login(client, "vis-owner3@test.com")
+        other = await register_and_login(client, "vis-other3@test.com")
+        mid = await self._make_method(client, owner, public=False)
+        # Owner flips to public via PATCH
+        r = await client.patch(
+            f"/api/v1/methods/{mid}", json={"is_public": True}, headers=owner
+        )
+        assert r.status_code == 200
+        assert r.json()["is_public"] is True
+        # Other user can now read it
+        r = await client.get(f"/api/v1/methods/{mid}", headers=other)
+        assert r.status_code == 200
+        # Toggle back off
+        r = await client.patch(
+            f"/api/v1/methods/{mid}", json={"is_public": False}, headers=owner
+        )
+        assert r.status_code == 200
+        r = await client.get(f"/api/v1/methods/{mid}", headers=other)
+        assert r.status_code == 403
+
+    async def test_patch_non_owner_forbidden(self, client):
+        owner = await register_and_login(client, "vis-owner4@test.com")
+        other = await register_and_login(client, "vis-other4@test.com")
+        mid = await self._make_method(client, owner, public=True)
+        r = await client.patch(
+            f"/api/v1/methods/{mid}", json={"name": "hijack"}, headers=other
+        )
+        assert r.status_code == 403
+
+    async def test_patch_updates_fields_in_place(self, client):
+        headers = await register_and_login(client, "vis-owner5@test.com")
+        mid = await self._make_method(client, headers)
+        r = await client.patch(
+            f"/api/v1/methods/{mid}",
+            json={"name": "renamed", "ph": 7.4, "flow_rate_ml_min": 0.8},
+            headers=headers,
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["id"] == mid  # same method, not a copy
+        assert body["name"] == "renamed"
+        assert body["ph"] == 7.4
+        assert body["flow_rate_ml_min"] == 0.8
+
+    async def test_fork_preserves_compounds_and_metadata(self, client):
+        owner = await register_and_login(client, "vis-owner6@test.com")
+        forker = await register_and_login(client, "vis-forker@test.com")
+        r = await client.post(
+            "/api/v1/methods",
+            json={
+                "name": "rich method",
+                "column_type": "C18",
+                "is_public": True,
+                "compounds_smiles": ["CCO"],
+                "compound_names": ["ethanol"],
+                "dwell_volume_ml": 1.1,
+                "dead_volume_ml": 0.2,
+                "retention_model": "lss",
+                "retention_model_label": "LSS",
+            },
+            headers=owner,
+        )
+        assert r.status_code == 201, r.text
+        mid = r.json()["id"]
+        r = await client.post(f"/api/v1/methods/{mid}/fork", headers=forker)
+        assert r.status_code == 201, r.text
+        forked = r.json()
+        assert forked["compounds_smiles"] == ["CCO"]
+        assert forked["compound_names"] == ["ethanol"]
+        assert forked["dwell_volume_ml"] == 1.1
+        assert forked["dead_volume_ml"] == 0.2
+        assert forked["retention_model"] == "lss"
+        assert forked["is_public"] is False  # fork is a private copy
