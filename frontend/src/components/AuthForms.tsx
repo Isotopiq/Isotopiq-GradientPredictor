@@ -183,7 +183,7 @@ export function AuthForms() {
                     type="checkbox"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    className="h-4 w-4 rounded border-input accent-accent"
+                    className="h-4 w-4 rounded border-input accent-accent shrink-0"
                   />
                   <span className="text-muted-foreground">Remember me for 30 days</span>
                 </label>

@@ -332,7 +332,7 @@ export function CompoundListImport({ open, onClose, onCreated }: Props) {
                   id="use-lipidmaps"
                   checked={useLipidmaps}
                   onChange={(e) => setUseLipidmaps(e.target.checked)}
-                  className="rounded border-border"
+                  className="rounded border-border shrink-0"
                 />
                 <label htmlFor="use-lipidmaps" className="text-xs">
                   Query LipidMaps API for lipid compounds
@@ -519,7 +519,7 @@ export function CompoundListImport({ open, onClose, onCreated }: Props) {
                               checked={confirmed}
                               onChange={() => toggleConfirm(r.row_index)}
                               disabled={!smiles && !manualSmiles[r.row_index]}
-                            />
+                             className="shrink-0" />
                           </td>
                           <td className="px-2 py-1">
                             {smiles ? (

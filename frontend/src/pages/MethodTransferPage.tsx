@@ -120,7 +120,7 @@ export function MethodTransferPage() {
           <NumField label="Temp (°C)" value={temp} onChange={setTemp} />
         </div>
         <label className="mt-2 flex items-center gap-2 text-xs">
-          <input type="checkbox" checked={preserveRes} onChange={(e) => setPreserveRes(e.target.checked)} />
+          <input type="checkbox" checked={preserveRes} onChange={(e) => setPreserveRes(e.target.checked)}  className="shrink-0" />
           Preserve resolution (scale gradient time)
         </label>
       </div>

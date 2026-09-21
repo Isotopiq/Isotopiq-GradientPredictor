@@ -611,7 +611,7 @@ export function MethodLibraryPage() {
                           type="checkbox"
                           checked={editPublic}
                           onChange={(e) => setEditPublic(e.target.checked)}
-                          className="accent-accent"
+                          className="accent-accent shrink-0"
                         />
                         <Globe size={12} />
                         Public — visible to all users in the Method Library

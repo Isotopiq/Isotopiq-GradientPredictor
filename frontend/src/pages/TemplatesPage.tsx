@@ -466,7 +466,7 @@ function TemplateEditor({
             id="template-shared"
             checked={form.is_shared}
             onChange={(e) => set('is_shared', e.target.checked)}
-            className="accent-accent"
+            className="accent-accent shrink-0"
           />
           <label htmlFor="template-shared" className="text-xs">
             Share with all users

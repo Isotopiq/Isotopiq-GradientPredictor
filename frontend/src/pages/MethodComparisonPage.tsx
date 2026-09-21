@@ -110,7 +110,7 @@ export function MethodComparisonPage() {
                 checked={selectedIds.includes(m.id)}
                 onChange={() => toggleMethod(m.id)}
                 disabled={!selectedIds.includes(m.id) && selectedIds.length >= 3}
-                className="rounded accent-accent"
+                className="rounded accent-accent shrink-0"
               />
               <span className="text-sm font-medium">{m.name || 'Unnamed'}</span>
               <span className="badge badge-muted">{m.column_type}</span>

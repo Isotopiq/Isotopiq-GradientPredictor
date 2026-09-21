@@ -79,7 +79,7 @@ export function ExportDialog({ open, onClose, title, sections, onExport }: Expor
                 type="checkbox"
                 checked={selected[section.key] ?? false}
                 onChange={() => toggle(section.key)}
-                className="h-4 w-4 rounded border-border accent-[hsl(var(--accent))]"
+                className="h-4 w-4 rounded border-border accent-[hsl(var(--accent))] shrink-0"
               />
               <span className="text-sm">{section.label}</span>
             </label>

@@ -1349,7 +1349,7 @@ export function PredictorPage() {
                   type="checkbox"
                   checked={autoAdjustGradient}
                   onChange={(e) => setAutoAdjustGradient(e.target.checked)}
-                  className="rounded border-border"
+                  className="rounded border-border shrink-0"
                 />
                 Auto-adjust gradient time to fit all peaks
               </label>
@@ -1797,7 +1797,7 @@ export function PredictorPage() {
                   type="checkbox"
                   checked={saveAsTemplate}
                   onChange={(e) => setSaveAsTemplate(e.target.checked)}
-                  className="accent-accent"
+                  className="accent-accent shrink-0"
                 />
                 <LayoutTemplate size={14} className="text-accent" />
                 <span>Also save as reusable method template</span>
@@ -1807,7 +1807,7 @@ export function PredictorPage() {
                   type="checkbox"
                   checked={methodPublic}
                   onChange={(e) => setMethodPublic(e.target.checked)}
-                  className="accent-accent"
+                  className="accent-accent shrink-0"
                 />
                 <Globe size={14} className="text-accent" />
                 <span>Public — visible to all users in the Method Library</span>
